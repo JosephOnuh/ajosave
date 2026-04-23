@@ -12,7 +12,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, token, vec, Address, Env, Symbol, Vec,
+    contract, contractimpl, contracttype, token, vec, Address, BytesN, Env, Symbol, Vec,
 };
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
@@ -216,6 +216,25 @@ impl AjoContract {
     /// Read-only: get all members.
     pub fn get_members(env: Env) -> Vec<Address> {
         env.storage().instance().get(&DataKey::Members).unwrap_or(vec![&env])
+    }
+
+    /// Upgrade the contract WASM. Admin-only.
+    ///
+    /// * `new_wasm_hash` – hash of the new WASM blob already uploaded to the network
+    ///
+    /// Emits an `upgraded` event so off-chain indexers can track deployments.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        admin.require_auth();
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
+
+        env.events()
+            .publish((Symbol::new(&env, "upgraded"),), (new_wasm_hash,));
     }
 }
 
