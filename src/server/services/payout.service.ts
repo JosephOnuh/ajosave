@@ -1,4 +1,5 @@
 import { sendUsdcPayment } from "@/lib/stellar";
+import { invokeContractPayout } from "@/lib/soroban";
 import { getCircleById, getMembersByCircle, updateCircleStatus } from "./circle.service";
 import type { Payout } from "@/types";
 import { randomUUID } from "crypto";
@@ -7,12 +8,12 @@ import { randomUUID } from "crypto";
 const payouts: Payout[] = [];
 
 /**
- * Process a payout cycle for a circle:
- * 1. Find the next member in rotation who hasn't received payout
- * 2. Send the full pot (contributionUsdc × members) to their Stellar key
- * 3. Record the payout and advance the cycle
+ * Process a payout cycle for a circle.
  *
- * In production: recipient's Stellar key comes from the user record in DB.
+ * If the circle has a contractId, the Soroban contract is the source of truth:
+ * it handles the token transfer and rotation internally.
+ *
+ * Falls back to direct Horizon payment for circles without a deployed contract.
  */
 export async function processCyclePayout(
   circleId: string,
@@ -27,7 +28,14 @@ export async function processCyclePayout(
     parseFloat(circle.contributionUsdc) * circleMembers.length
   ).toFixed(7);
 
-  const txHash = await sendUsdcPayment(recipientStellarKey, totalPot);
+  let txHash: string;
+  if (circle.contractId) {
+    // Soroban path: contract handles transfer, backend only triggers payout()
+    txHash = await invokeContractPayout(circle.contractId);
+  } else {
+    // Horizon fallback for circles without a deployed contract
+    txHash = await sendUsdcPayment(recipientStellarKey, totalPot);
+  }
 
   const payout: Payout = {
     id: randomUUID(),
@@ -41,7 +49,6 @@ export async function processCyclePayout(
 
   payouts.push(payout);
 
-  // Mark complete if all members have been paid
   if (circle.currentCycle >= circleMembers.length) {
     await updateCircleStatus(circleId, "completed");
   }
