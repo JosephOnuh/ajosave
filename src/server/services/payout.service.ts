@@ -1,23 +1,27 @@
 import { sendUsdcPayment } from "@/lib/stellar";
 import { getCircleById, getMembersByCircle, updateCircleStatus } from "./circle.service";
+import { withPayoutLock, PayoutLockError } from "./payout-lock";
 import type { Payout } from "@/types";
 import { randomUUID } from "crypto";
+
+export { PayoutLockError };
 
 // In-memory payout log — replace with DB
 const payouts: Payout[] = [];
 
 /**
  * Process a payout cycle for a circle:
- * 1. Find the next member in rotation who hasn't received payout
- * 2. Send the full pot (contributionUsdc × members) to their Stellar key
+ * 1. Acquire a per-circle lock to prevent concurrent sequence number conflicts
+ * 2. Send the full pot (contributionUsdc × members) to the recipient's Stellar key
  * 3. Record the payout and advance the cycle
  *
- * In production: recipient's Stellar key comes from the user record in DB.
+ * Throws PayoutLockError immediately if a payout is already in progress for this circle.
  */
 export async function processCyclePayout(
   circleId: string,
   recipientStellarKey: string
 ): Promise<Payout> {
+  return withPayoutLock(circleId, async () => {
   const circle = await getCircleById(circleId);
   if (!circle) throw new Error("Circle not found");
   if (circle.status !== "active") throw new Error("Circle is not active");
@@ -27,6 +31,7 @@ export async function processCyclePayout(
     parseFloat(circle.contributionUsdc) * circleMembers.length
   ).toFixed(7);
 
+  // sendUsdcPayment fetches a fresh account sequence number each call
   const txHash = await sendUsdcPayment(recipientStellarKey, totalPot);
 
   const payout: Payout = {
@@ -47,6 +52,7 @@ export async function processCyclePayout(
   }
 
   return payout;
+  }); // end withPayoutLock
 }
 
 export async function getPayoutsByCircle(circleId: string): Promise<Payout[]> {
