@@ -10,6 +10,9 @@ export const serverConfig = {
       process.env.STELLAR_NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015",
     ajoContractId: process.env.STELLAR_AJO_CONTRACT_ID ?? "",
     serverSecretKey: process.env.STELLAR_SERVER_SECRET_KEY ?? "",
+    sorobanRpcUrl:
+      process.env.STELLAR_SOROBAN_RPC_URL ??
+      "https://soroban-testnet.stellar.org",
   },
   usdc: {
     issuer: process.env.USDC_ISSUER ?? "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
