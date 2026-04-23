@@ -1,8 +1,11 @@
 import { sendUsdcPayment } from "@/lib/stellar";
 import { invokeContractPayout } from "@/lib/soroban";
 import { getCircleById, getMembersByCircle, updateCircleStatus } from "./circle.service";
+import { withPayoutLock, PayoutLockError } from "./payout-lock";
 import type { Payout } from "@/types";
 import { randomUUID } from "crypto";
+
+export { PayoutLockError };
 
 // In-memory payout log — replace with DB
 const payouts: Payout[] = [];
@@ -19,6 +22,7 @@ export async function processCyclePayout(
   circleId: string,
   recipientStellarKey: string
 ): Promise<Payout> {
+  return withPayoutLock(circleId, async () => {
   const circle = await getCircleById(circleId);
   if (!circle) throw new Error("Circle not found");
   if (circle.status !== "active") throw new Error("Circle is not active");
@@ -54,6 +58,7 @@ export async function processCyclePayout(
   }
 
   return payout;
+  }); // end withPayoutLock
 }
 
 export async function getPayoutsByCircle(circleId: string): Promise<Payout[]> {
