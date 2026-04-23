@@ -78,3 +78,32 @@ jobs:
       - name: Run contract tests
         working-directory: contracts
         run: cargo test
+
+  deploy-contract-testnet:
+    name: Deploy Contract to Testnet
+    runs-on: ubuntu-latest
+    needs: [contract-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: contracts }
+      - name: Build contract WASM
+        working-directory: contracts
+        run: cargo build --target wasm32-unknown-unknown --release
+      - name: Install Stellar CLI
+        run: |
+          curl -sSL https://github.com/stellar/stellar-cli/releases/latest/download/stellar-cli-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C /usr/local/bin
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - name: Deploy to testnet
+        env:
+          STELLAR_NETWORK: testnet
+          STELLAR_SERVER_SECRET_KEY: ${{ secrets.STELLAR_TESTNET_SECRET_KEY }}
+        run: npm run contract:deploy
+      - name: Print contract ID
+        run: cat .contract-id
