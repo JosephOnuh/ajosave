@@ -55,6 +55,10 @@ jobs:
       TERMII_API_KEY: placeholder
       REDIS_URL: redis://localhost:6379
       CRON_SECRET: placeholder
+      NEXT_PUBLIC_SENTRY_DSN: ""
+      SENTRY_DSN: ""
+      SENTRY_ORG: ajosave
+      SENTRY_PROJECT: ajosave-nextjs
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
