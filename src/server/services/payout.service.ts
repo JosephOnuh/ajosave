@@ -1,3 +1,4 @@
+import { query } from "@/lib/db";
 import { sendUsdcPayment } from "@/lib/stellar";
 import { invokeContractPayout } from "@/lib/soroban";
 import { getCircleById, getMembersByCircle, updateCircleStatus } from "./circle.service";
@@ -7,9 +8,6 @@ import { randomUUID } from "crypto";
 
 export { PayoutLockError };
 
-// In-memory payout log — replace with DB
-const payouts: Payout[] = [];
-
 /**
  * Process a payout cycle for a circle.
  *
@@ -17,50 +15,67 @@ const payouts: Payout[] = [];
  * it handles the token transfer and rotation internally.
  *
  * Falls back to direct Horizon payment for circles without a deployed contract.
+ *
+ * All payout records are persisted to PostgreSQL for horizontal scalability.
  */
 export async function processCyclePayout(
   circleId: string,
   recipientStellarKey: string
 ): Promise<Payout> {
   return withPayoutLock(circleId, async () => {
-  const circle = await getCircleById(circleId);
-  if (!circle) throw new Error("Circle not found");
-  if (circle.status !== "active") throw new Error("Circle is not active");
+    const circle = await getCircleById(circleId);
+    if (!circle) throw new Error("Circle not found");
+    if (circle.status !== "active") throw new Error("Circle is not active");
 
-  const circleMembers = await getMembersByCircle(circleId);
-  const totalPot = (
-    parseFloat(circle.contributionUsdc) * circleMembers.length
-  ).toFixed(7);
+    const circleMembers = await getMembersByCircle(circleId);
+    const totalPot = (
+      parseFloat(circle.contributionUsdc) * circleMembers.length
+    ).toFixed(7);
 
-  let txHash: string;
-  if (circle.contractId) {
-    // Soroban path: contract handles transfer, backend only triggers payout()
-    txHash = await invokeContractPayout(circle.contractId);
-  } else {
-    // Horizon fallback for circles without a deployed contract
-    txHash = await sendUsdcPayment(recipientStellarKey, totalPot);
-  }
+    let txHash: string;
+    if (circle.contractId) {
+      // Soroban path: contract handles transfer, backend only triggers payout()
+      txHash = await invokeContractPayout(circle.contractId);
+    } else {
+      // Horizon fallback for circles without a deployed contract
+      txHash = await sendUsdcPayment(recipientStellarKey, totalPot);
+    }
 
-  const payout: Payout = {
-    id: randomUUID(),
-    circleId,
-    recipientMemberId: circleMembers[circle.currentCycle - 1]?.id ?? "",
-    cycleNumber: circle.currentCycle,
-    amountUsdc: totalPot,
-    txHash,
-    paidAt: new Date(),
-  };
+    const payoutId = randomUUID();
+    const recipientMemberId = circleMembers[circle.currentCycle - 1]?.id ?? "";
 
-  payouts.push(payout);
+    // Persist payout to PostgreSQL
+    const { rows } = await query<Payout>(
+      `INSERT INTO payouts (id, circle_id, recipient_member_id, cycle_number, amount_usdc, tx_hash, paid_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       RETURNING id, circle_id as "circleId", recipient_member_id as "recipientMemberId", 
+                 cycle_number as "cycleNumber", amount_usdc as "amountUsdc", tx_hash as "txHash", paid_at as "paidAt"`,
+      [payoutId, circleId, recipientMemberId, circle.currentCycle, totalPot, txHash]
+    );
 
-  if (circle.currentCycle >= circleMembers.length) {
-    await updateCircleStatus(circleId, "completed");
-  }
+    const payout = rows[0];
 
-  return payout;
+    if (circle.currentCycle >= circleMembers.length) {
+      await updateCircleStatus(circleId, "completed");
+    }
+
+    return payout;
   }); // end withPayoutLock
 }
 
+/**
+ * Retrieve all payouts for a specific circle from PostgreSQL.
+ * @param circleId The circle ID to filter payouts by
+ * @returns Array of payout records sorted by cycle number
+ */
 export async function getPayoutsByCircle(circleId: string): Promise<Payout[]> {
-  return payouts.filter((p) => p.circleId === circleId);
+  const { rows } = await query<Payout>(
+    `SELECT id, circle_id as "circleId", recipient_member_id as "recipientMemberId",
+            cycle_number as "cycleNumber", amount_usdc as "amountUsdc", tx_hash as "txHash", paid_at as "paidAt"
+     FROM payouts
+     WHERE circle_id = $1
+     ORDER BY cycle_number ASC`,
+    [circleId]
+  );
+  return rows;
 }

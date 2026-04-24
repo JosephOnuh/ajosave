@@ -1,15 +1,18 @@
 import { processCyclePayout, getPayoutsByCircle } from "@/server/services/payout.service";
 import * as circleService from "@/server/services/circle.service";
 import * as stellar from "@/lib/stellar";
-import type { Circle, Member } from "@/types";
+import * as db from "@/lib/db";
+import type { Circle, Member, Payout } from "@/types";
 
 jest.mock("@/server/services/circle.service");
 jest.mock("@/lib/stellar");
+jest.mock("@/lib/db");
 
 const mockGetCircleById = circleService.getCircleById as jest.MockedFunction<typeof circleService.getCircleById>;
 const mockGetMembersByCircle = circleService.getMembersByCircle as jest.MockedFunction<typeof circleService.getMembersByCircle>;
 const mockUpdateCircleStatus = circleService.updateCircleStatus as jest.MockedFunction<typeof circleService.updateCircleStatus>;
 const mockSendUsdcPayment = stellar.sendUsdcPayment as jest.MockedFunction<typeof stellar.sendUsdcPayment>;
+const mockQuery = db.query as jest.MockedFunction<typeof db.query>;
 
 const CIRCLE_ID = "circle-1";
 const RECIPIENT_KEY = "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
@@ -44,6 +47,19 @@ function makeMembers(count: number): Member[] {
   }));
 }
 
+function makePayout(overrides: Partial<Payout> = {}): Payout {
+  return {
+    id: "payout-1",
+    circleId: CIRCLE_ID,
+    recipientMemberId: "member-1",
+    cycleNumber: 1,
+    amountUsdc: "30.0000000",
+    txHash: TX_HASH,
+    paidAt: new Date(),
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockUpdateCircleStatus.mockResolvedValue(undefined);
@@ -54,8 +70,10 @@ describe("processCyclePayout", () => {
   describe("happy path", () => {
     it("sends payment for the correct total pot and returns a payout record", async () => {
       const members = makeMembers(3);
+      const payoutRecord = makePayout();
       mockGetCircleById.mockResolvedValue(makeCircle({ currentCycle: 1 }));
       mockGetMembersByCircle.mockResolvedValue(members);
+      mockQuery.mockResolvedValue({ rows: [payoutRecord], rowCount: 1 } as any);
 
       const payout = await processCyclePayout(CIRCLE_ID, RECIPIENT_KEY);
 
@@ -73,6 +91,7 @@ describe("processCyclePayout", () => {
     it("does NOT mark circle completed when cycles remain", async () => {
       mockGetCircleById.mockResolvedValue(makeCircle({ currentCycle: 1 }));
       mockGetMembersByCircle.mockResolvedValue(makeMembers(3));
+      mockQuery.mockResolvedValue({ rows: [makePayout()], rowCount: 1 } as any);
 
       await processCyclePayout(CIRCLE_ID, RECIPIENT_KEY);
 
@@ -83,20 +102,40 @@ describe("processCyclePayout", () => {
       const members = makeMembers(3);
       mockGetCircleById.mockResolvedValue(makeCircle({ currentCycle: 3 }));
       mockGetMembersByCircle.mockResolvedValue(members);
+      mockQuery.mockResolvedValue({ rows: [makePayout({ cycleNumber: 3 })], rowCount: 1 } as any);
 
       await processCyclePayout(CIRCLE_ID, RECIPIENT_KEY);
 
       expect(mockUpdateCircleStatus).toHaveBeenCalledWith(CIRCLE_ID, "completed");
     });
 
-    it("appends payout to getPayoutsByCircle", async () => {
+    it("returns payout record from database query", async () => {
       mockGetCircleById.mockResolvedValue(makeCircle());
       mockGetMembersByCircle.mockResolvedValue(makeMembers(2));
+      const payoutRecord = makePayout();
+      mockQuery.mockResolvedValue({ rows: [payoutRecord], rowCount: 1 } as any);
 
       const payout = await processCyclePayout(CIRCLE_ID, RECIPIENT_KEY);
-      const all = await getPayoutsByCircle(CIRCLE_ID);
 
-      expect(all).toContainEqual(payout);
+      expect(payout).toEqual(payoutRecord);
+      // Verify query was called to insert payout
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO payouts"),
+        expect.any(Array)
+      );
+    });
+
+    it("retrieves payouts from database for a circle", async () => {
+      const payoutsRecord = [makePayout({ cycleNumber: 1 }), makePayout({ cycleNumber: 2, id: "payout-2" })];
+      mockQuery.mockResolvedValue({ rows: payoutsRecord, rowCount: 2 } as any);
+
+      const payouts = await getPayoutsByCircle(CIRCLE_ID);
+
+      expect(payouts).toEqual(payoutsRecord);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining("SELECT id, circle_id"),
+        [CIRCLE_ID]
+      );
     });
   });
 
@@ -149,6 +188,7 @@ describe("processCyclePayout", () => {
 
 describe("getPayoutsByCircle", () => {
   it("returns empty array for a circle with no payouts", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 } as any);
     const result = await getPayoutsByCircle("unknown-circle");
     expect(result).toEqual([]);
   });
