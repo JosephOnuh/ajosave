@@ -23,8 +23,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public 2>/dev/null || true
 COPY --from=builder /app/next.config.mjs ./
+COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/scripts/migrate.ts ./scripts/migrate.ts
+COPY --from=builder /app/tsconfig.json ./
 COPY package.json ./
 
 USER appuser
 EXPOSE 3000
-CMD ["node_modules/.bin/next", "start"]
+CMD ["sh", "-c", "node_modules/.bin/ts-node scripts/migrate.ts up && node_modules/.bin/next start"]

@@ -15,6 +15,11 @@
       "schedule": "0 * * * *"
     }
   ],
+  "functions": {
+    "instrumentation.ts": {
+      "includeFiles": "migrations/**"
+    }
+  },
   "env": {
     "NEXT_PUBLIC_APP_NAME": "Ajosave",
     "STELLAR_NETWORK": "mainnet",
