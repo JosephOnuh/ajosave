@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { query } from "@/lib/db";
 import { serverConfig } from "@/server/config";
 
 async function checkDb(): Promise<boolean> {
   try {
-    // Lightweight DB check — replace with actual query when DB client is wired up
-    return Boolean(serverConfig.database.url);
+    await query("SELECT 1");
+    return true;
   } catch {
     return false;
   }
@@ -12,7 +13,12 @@ async function checkDb(): Promise<boolean> {
 
 async function checkRedis(): Promise<boolean> {
   try {
-    return Boolean(serverConfig.redis.url);
+    const { createClient } = await import("redis");
+    const client = createClient({ url: serverConfig.redis.url });
+    await client.connect();
+    await client.ping();
+    await client.disconnect();
+    return true;
   } catch {
     return false;
   }
@@ -22,11 +28,13 @@ export async function GET() {
   const [db, redis] = await Promise.all([checkDb(), checkRedis()]);
 
   const healthy = db && redis;
-  const body = {
-    status: healthy ? "ok" : "degraded",
-    db: db ? "ok" : "error",
-    redis: redis ? "ok" : "error",
-  };
-
-  return NextResponse.json(body, { status: healthy ? 200 : 503 });
+  return NextResponse.json(
+    {
+      status: healthy ? "ok" : "degraded",
+      db: db ? "ok" : "error",
+      redis: redis ? "ok" : "error",
+      timestamp: new Date().toISOString(),
+    },
+    { status: healthy ? 200 : 503 }
+  );
 }
