@@ -3,7 +3,16 @@
   "version": "0.1.0",
   "private": false,
   "description": "Trustless rotating savings circles (Ajo/Esusu) on the Stellar blockchain.",
-  "keywords": ["stellar", "soroban", "savings", "ajo", "esusu", "usdc", "defi", "nigeria"],
+  "keywords": [
+    "stellar",
+    "soroban",
+    "savings",
+    "ajo",
+    "esusu",
+    "usdc",
+    "defi",
+    "nigeria"
+  ],
   "homepage": "https://www.ajosave.app",
   "repository": {
     "type": "git",
@@ -25,6 +34,9 @@
     "contract:build": "cd contracts && stellar contract build",
     "contract:test": "cd contracts && cargo test",
     "contract:deploy": "ts-node scripts/deploy-contract.ts",
+    "migrate": "ts-node scripts/migrate.ts up",
+    "migrate:down": "ts-node scripts/migrate.ts down",
+    "migrate:create": "node-pg-migrate create --migrations-dir migrations",
     "prepare": "husky"
   },
   "dependencies": {
@@ -38,6 +50,7 @@
     "jose": "^5.6.3",
     "next": "14.2.4",
     "next-auth": "^4.24.7",
+    "node-pg-migrate": "^8.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.52.1",
@@ -62,7 +75,10 @@
     "typescript": "^5.5.3"
   },
   "lint-staged": {
-    "*.{ts,tsx}": ["eslint --fix", "prettier --write"],
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
     "*.{json,md,css}": "prettier --write"
   },
   "engines": {
