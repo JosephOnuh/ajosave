@@ -19,6 +19,26 @@ export function withAuth(handler: Handler): Handler {
   };
 }
 
+export function withAdminAuth(handler: Handler): Handler {
+  return async (req, ctx) => {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json<ApiError>(
+        { success: false, error: "Unauthorized", code: "UNAUTHORIZED" },
+        { status: 401 }
+      );
+    }
+    const role = (session.user as { role?: string }).role;
+    if (role !== "admin") {
+      return NextResponse.json<ApiError>(
+        { success: false, error: "Forbidden", code: "FORBIDDEN" },
+        { status: 403 }
+      );
+    }
+    return handler(req, ctx);
+  };
+}
+
 export function withErrorHandler(handler: Handler): Handler {
   return async (req, ctx) => {
     try {
