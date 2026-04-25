@@ -12,6 +12,7 @@ export interface User {
 // ─── Circle ───────────────────────────────────────────────────────────────────
 export type CircleStatus = "open" | "active" | "completed" | "cancelled";
 export type CycleFrequency = "weekly" | "biweekly" | "monthly";
+export type PayoutMethod = "fixed" | "randomized";
 
 export interface Circle {
   id: string;
@@ -21,6 +22,8 @@ export interface Circle {
   contributionNgn: number;
   maxMembers: number;
   cycleFrequency: CycleFrequency;
+  payoutMethod: PayoutMethod;
+  randomizationSeed?: string; // stored seed for verifiability
   status: CircleStatus;
   contractId?: string;        // deployed Soroban circle contract
   currentCycle: number;       // 1-indexed
