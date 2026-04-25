@@ -339,3 +339,6 @@ mod tests {
         client.contribute(&members.get(0).unwrap()); // second contribution same cycle
     }
 }
+
+#[cfg(test)]
+mod integration_tests;
