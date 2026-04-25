@@ -2,17 +2,19 @@ import { query, transaction } from "@/lib/db";
 import { randomUUID } from "crypto";
 import type { Circle, Member, CircleStatus } from "@/types";
 import type { CreateCircleInput } from "@/types/schemas";
+import { getNgnPerUsdc } from "@/lib/fx";
 
-// Exchange rate — replace with live FX feed in production
-const NGN_PER_USDC = 1600;
-export const ngnToUsdc = (ngn: number) => (ngn / NGN_PER_USDC).toFixed(7);
+export const ngnToUsdc = async (ngn: number): Promise<string> => {
+  const rate = await getNgnPerUsdc();
+  return (ngn / rate).toFixed(7);
+};
 
 export async function createCircle(
   creatorId: string,
   input: CreateCircleInput
 ): Promise<Circle> {
   const id = randomUUID();
-  const contributionUsdc = ngnToUsdc(input.contributionNgn);
+  const contributionUsdc = await ngnToUsdc(input.contributionNgn);
   const { rows } = await query<Circle>(
     `INSERT INTO circles
        (id, name, creator_id, contribution_usdc, contribution_ngn,
