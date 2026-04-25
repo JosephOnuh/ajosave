@@ -6,6 +6,7 @@ export interface User {
   email?: string;
   stellarPublicKey?: string;
   reputationScore: number; // 0–100, built from on-time contributions
+  smsNotificationsEnabled: boolean;
   createdAt: Date;
 }
 
