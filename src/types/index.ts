@@ -12,6 +12,7 @@ export interface User {
 // ─── Circle ───────────────────────────────────────────────────────────────────
 export type CircleStatus = "open" | "active" | "completed" | "cancelled";
 export type CycleFrequency = "weekly" | "biweekly" | "monthly";
+export type CircleType = "public" | "private";
 
 export interface Circle {
   id: string;
@@ -21,6 +22,7 @@ export interface Circle {
   contributionNgn: number;
   maxMembers: number;
   cycleFrequency: CycleFrequency;
+  circleType: CircleType;     // public (anyone can join) or private (requires approval)
   status: CircleStatus;
   contractId?: string;        // deployed Soroban circle contract
   currentCycle: number;       // 1-indexed
@@ -30,16 +32,17 @@ export interface Circle {
 }
 
 // ─── Membership ───────────────────────────────────────────────────────────────
-export type MemberStatus = "pending" | "active" | "defaulted" | "completed";
+export type MemberStatus = "pending" | "active" | "rejected" | "defaulted" | "completed";
 
 export interface Member {
   id: string;
   circleId: string;
   userId: string;
-  position: number;           // payout order (1 = first to receive)
+  position: number | null;    // payout order (1 = first to receive), null for pending members
   status: MemberStatus;
   hasReceivedPayout: boolean;
   joinedAt: Date;
+  reviewedAt?: Date;          // when creator approved/rejected the request
 }
 
 // ─── Contribution ─────────────────────────────────────────────────────────────

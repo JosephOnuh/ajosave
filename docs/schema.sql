@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS circles (
   contribution_ngn NUMERIC(20, 2) NOT NULL,
   max_members INTEGER NOT NULL CHECK (max_members > 0),
   cycle_frequency VARCHAR(20) NOT NULL CHECK (cycle_frequency IN ('weekly', 'biweekly', 'monthly')),
+  circle_type VARCHAR(20) NOT NULL DEFAULT 'public' CHECK (circle_type IN ('public', 'private')),
   status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'active', 'completed', 'cancelled')),
   contract_id VARCHAR(255),
   current_cycle INTEGER NOT NULL DEFAULT 0,
@@ -17,7 +18,8 @@ CREATE TABLE IF NOT EXISTS circles (
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
   INDEX idx_circles_status (status),
-  INDEX idx_circles_creator_id (creator_id)
+  INDEX idx_circles_creator_id (creator_id),
+  INDEX idx_circles_type (circle_type)
 );
 
 -- ─── Members ────────────────────────────────────────────────────────────────────
@@ -25,10 +27,11 @@ CREATE TABLE IF NOT EXISTS members (
   id UUID PRIMARY KEY,
   circle_id UUID NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
   user_id VARCHAR(255) NOT NULL,
-  position INTEGER NOT NULL CHECK (position > 0),
-  status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'defaulted', 'completed')),
+  position INTEGER CHECK (position > 0),
+  status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'rejected', 'defaulted', 'completed')),
   has_received_payout BOOLEAN NOT NULL DEFAULT FALSE,
   joined_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  reviewed_at TIMESTAMP,
   INDEX idx_members_circle_id (circle_id),
   INDEX idx_members_user_id (user_id),
   INDEX idx_members_status (status),
