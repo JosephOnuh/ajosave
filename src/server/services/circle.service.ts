@@ -2,25 +2,27 @@ import { query, transaction } from "@/lib/db";
 import { randomUUID } from "crypto";
 import type { Circle, Member, CircleStatus } from "@/types";
 import type { CreateCircleInput } from "@/types/schemas";
+import { getNgnPerUsdc } from "@/lib/fx";
 
-// Exchange rate — replace with live FX feed in production
-const NGN_PER_USDC = 1600;
-export const ngnToUsdc = (ngn: number) => (ngn / NGN_PER_USDC).toFixed(7);
+export const ngnToUsdc = async (ngn: number): Promise<string> => {
+  const rate = await getNgnPerUsdc();
+  return (ngn / rate).toFixed(7);
+};
 
 export async function createCircle(
   creatorId: string,
   input: CreateCircleInput
 ): Promise<Circle> {
   const id = randomUUID();
-  const contributionUsdc = ngnToUsdc(input.contributionNgn);
+  const contributionUsdc = await ngnToUsdc(input.contributionNgn);
   const { rows } = await query<Circle>(
     `INSERT INTO circles
        (id, name, creator_id, contribution_usdc, contribution_ngn,
-        max_members, cycle_frequency, circle_type, status, current_cycle, created_at, updated_at)
+        max_members, cycle_frequency, payout_method, status, current_cycle, created_at, updated_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',0,NOW(),NOW())
      RETURNING *`,
     [id, input.name, creatorId, contributionUsdc, input.contributionNgn,
-     input.maxMembers, input.cycleFrequency, input.circleType || 'public']
+     input.maxMembers, input.cycleFrequency, input.payoutMethod]
   );
   return rows[0];
 }
@@ -112,6 +114,67 @@ export async function updateCircleStatus(id: string, status: CircleStatus): Prom
     "UPDATE circles SET status=$1, updated_at=NOW() WHERE id=$2",
     [status, id]
   );
+}
+
+export async function shuffleAndPersistPositions(
+  circleId: string,
+  seed: string
+): Promise<Member[]> {
+  return transaction(async (q) => {
+    const { rows: circleRows } = await q<Circle>(
+      "SELECT * FROM circles WHERE id = $1 FOR UPDATE",
+      [circleId]
+    );
+    const circle = circleRows[0];
+    if (!circle) throw new Error("Circle not found");
+    if (circle.status !== "open") throw new Error("Positions can only be shuffled before the circle starts");
+
+    const { rows: memberRows } = await q<Member>(
+      "SELECT * FROM members WHERE circle_id = $1 ORDER BY position",
+      [circleId]
+    );
+
+    // Fisher-Yates shuffle using seed for deterministic randomization
+    const positions = memberRows.map((_, i) => i + 1);
+    const seededRandom = createSeededRandom(seed);
+    for (let i = positions.length - 1; i > 0; i--) {
+      const j = Math.floor(seededRandom() * (i + 1));
+      [positions[i], positions[j]] = [positions[j], positions[i]];
+    }
+
+    // Update member positions
+    for (let i = 0; i < memberRows.length; i++) {
+      await q(
+        "UPDATE members SET position = $1, updated_at = NOW() WHERE id = $2",
+        [positions[i], memberRows[i].id]
+      );
+    }
+
+    // Store seed and mark as randomized
+    await q(
+      "UPDATE circles SET payout_method = 'randomized', randomization_seed = $1, updated_at = NOW() WHERE id = $2",
+      [seed, circleId]
+    );
+
+    // Return shuffled members sorted by new position
+    const shuffled = memberRows.map((m, i) => ({ ...m, position: positions[i] }));
+    return shuffled.sort((a, b) => a.position - b.position);
+  });
+}
+
+function createSeededRandom(seed: string): () => number {
+  // Simple seeded PRNG using hash-based approach
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    const char = seed.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+
+  return function () {
+    hash = (hash * 9301 + 49297) % 233280;
+    return hash / 233280;
+  };
 }
 
 function computeNextPayoutDate(frequency: Circle["cycleFrequency"]): Date {

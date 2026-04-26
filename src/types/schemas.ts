@@ -8,7 +8,7 @@ export const createCircleSchema = z.object({
     .max(5_000_000, "Maximum contribution is ₦5,000,000"),
   maxMembers: z.number().min(2, "Minimum 2 members").max(20, "Maximum 20 members"),
   cycleFrequency: z.enum(["weekly", "biweekly", "monthly"]),
-  circleType: z.enum(["public", "private"]).default("public"),
+  payoutMethod: z.enum(["fixed", "randomized"]).default("fixed"),
 });
 
 export const joinCircleSchema = z.object({

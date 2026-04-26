@@ -1,4 +1,6 @@
 // ─── User ─────────────────────────────────────────────────────────────────────
+export type UserRole = "user" | "admin";
+
 export interface User {
   id: string;
   phone: string;
@@ -6,13 +8,14 @@ export interface User {
   email?: string;
   stellarPublicKey?: string;
   reputationScore: number; // 0–100, built from on-time contributions
+  role: UserRole;
   createdAt: Date;
 }
 
 // ─── Circle ───────────────────────────────────────────────────────────────────
 export type CircleStatus = "open" | "active" | "completed" | "cancelled";
 export type CycleFrequency = "weekly" | "biweekly" | "monthly";
-export type CircleType = "public" | "private";
+export type PayoutMethod = "fixed" | "randomized";
 
 export interface Circle {
   id: string;
@@ -22,7 +25,8 @@ export interface Circle {
   contributionNgn: number;
   maxMembers: number;
   cycleFrequency: CycleFrequency;
-  circleType: CircleType;     // public (anyone can join) or private (requires approval)
+  payoutMethod: PayoutMethod;
+  randomizationSeed?: string; // stored seed for verifiability
   status: CircleStatus;
   contractId?: string;        // deployed Soroban circle contract
   currentCycle: number;       // 1-indexed
