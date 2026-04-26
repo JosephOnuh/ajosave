@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import type { Circle, Member, CircleStatus } from "@/types";
 import type { CreateCircleInput } from "@/types/schemas";
 import { getNgnPerUsdc } from "@/lib/fx";
+import { deployAjoContract } from "@/lib/soroban";
 
 export const ngnToUsdc = async (ngn: number): Promise<string> => {
   const rate = await getNgnPerUsdc();
@@ -15,14 +16,23 @@ export async function createCircle(
 ): Promise<Circle> {
   const id = randomUUID();
   const contributionUsdc = await ngnToUsdc(input.contributionNgn);
+
+  // Deploy a dedicated Soroban contract instance for this circle
+  let contractId: string | null = null;
+  try {
+    contractId = await deployAjoContract();
+  } catch (err) {
+    console.error("[createCircle] Contract deployment failed, proceeding without contractId:", err);
+  }
+
   const { rows } = await query<Circle>(
     `INSERT INTO circles
        (id, name, creator_id, contribution_usdc, contribution_ngn,
-        max_members, cycle_frequency, payout_method, status, current_cycle, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',0,NOW(),NOW())
+        max_members, cycle_frequency, payout_method, contract_id, status, current_cycle, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'open',0,NOW(),NOW())
      RETURNING *`,
     [id, input.name, creatorId, contributionUsdc, input.contributionNgn,
-     input.maxMembers, input.cycleFrequency, input.payoutMethod]
+     input.maxMembers, input.cycleFrequency, input.payoutMethod, contractId]
   );
   return rows[0];
 }
