@@ -67,20 +67,27 @@ export async function joinCircle(
     if (circle.status !== "open") throw new Error("Circle is not open for joining");
 
     const { rows: memberRows } = await q<Member>(
-      "SELECT * FROM members WHERE circle_id = $1",
+      "SELECT * FROM members WHERE circle_id = $1 AND status IN ('active', 'pending')",
       [circleId]
     );
     if (memberRows.length >= circle.maxMembers) throw new Error("Circle is full");
     if (memberRows.some((m) => m.userId === userId)) throw new Error("Already a member");
 
+    // For private circles, create pending membership without position
+    // For public circles, auto-approve and assign position
+    const isPrivate = circle.circleType === "private";
+    const status = isPrivate ? "pending" : "active";
+    const position = isPrivate ? null : memberRows.filter(m => m.status === 'active').length + 1;
+
     const { rows: newMember } = await q<Member>(
       `INSERT INTO members (id, circle_id, user_id, position, status, has_received_payout, joined_at)
-       VALUES ($1,$2,$3,$4,'active',false,NOW()) RETURNING *`,
-      [randomUUID(), circleId, userId, memberRows.length + 1]
+       VALUES ($1,$2,$3,$4,$5,false,NOW()) RETURNING *`,
+      [randomUUID(), circleId, userId, position, status]
     );
 
-    // Auto-start when full
-    if (memberRows.length + 1 === circle.maxMembers) {
+    // Auto-start when full (only count active members)
+    const activeMembers = memberRows.filter(m => m.status === 'active').length + (status === 'active' ? 1 : 0);
+    if (activeMembers === circle.maxMembers) {
       await q(
         `UPDATE circles
          SET status='active', current_cycle=1,
@@ -176,4 +183,106 @@ function computeNextPayoutDate(frequency: Circle["cycleFrequency"]): Date {
   else if (frequency === "biweekly") d.setDate(d.getDate() + 14);
   else d.setMonth(d.getMonth() + 1);
   return d;
+}
+
+export async function approveJoinRequest(
+  circleId: string,
+  memberId: string,
+  creatorId: string
+): Promise<Member> {
+  return transaction(async (q) => {
+    // Verify creator owns the circle
+    const { rows: circleRows } = await q<Circle>(
+      "SELECT * FROM circles WHERE id = $1 FOR UPDATE",
+      [circleId]
+    );
+    const circle = circleRows[0];
+    if (!circle) throw new Error("Circle not found");
+    if (circle.creatorId !== creatorId) throw new Error("Only the creator can approve join requests");
+    if (circle.circleType !== "private") throw new Error("Only private circles require approval");
+
+    // Get the member
+    const { rows: memberRows } = await q<Member>(
+      "SELECT * FROM members WHERE id = $1 AND circle_id = $2",
+      [memberId, circleId]
+    );
+    const member = memberRows[0];
+    if (!member) throw new Error("Member not found");
+    if (member.status !== "pending") throw new Error("Member is not pending approval");
+
+    // Count active members to assign position
+    const { rows: activeMembers } = await q<Member>(
+      "SELECT * FROM members WHERE circle_id = $1 AND status = 'active'",
+      [circleId]
+    );
+    const position = activeMembers.length + 1;
+
+    // Approve the member
+    const { rows: updatedMember } = await q<Member>(
+      `UPDATE members
+       SET status = 'active', position = $1, reviewed_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [position, memberId]
+    );
+
+    // Auto-start circle if now full
+    if (activeMembers.length + 1 === circle.maxMembers) {
+      await q(
+        `UPDATE circles
+         SET status='active', current_cycle=1,
+             next_payout_at=$1, updated_at=NOW()
+         WHERE id=$2`,
+        [computeNextPayoutDate(circle.cycleFrequency), circleId]
+      );
+    }
+
+    return updatedMember[0];
+  });
+}
+
+export async function rejectJoinRequest(
+  circleId: string,
+  memberId: string,
+  creatorId: string
+): Promise<Member> {
+  return transaction(async (q) => {
+    // Verify creator owns the circle
+    const { rows: circleRows } = await q<Circle>(
+      "SELECT * FROM circles WHERE id = $1",
+      [circleId]
+    );
+    const circle = circleRows[0];
+    if (!circle) throw new Error("Circle not found");
+    if (circle.creatorId !== creatorId) throw new Error("Only the creator can reject join requests");
+    if (circle.circleType !== "private") throw new Error("Only private circles require approval");
+
+    // Get the member
+    const { rows: memberRows } = await q<Member>(
+      "SELECT * FROM members WHERE id = $1 AND circle_id = $2",
+      [memberId, circleId]
+    );
+    const member = memberRows[0];
+    if (!member) throw new Error("Member not found");
+    if (member.status !== "pending") throw new Error("Member is not pending approval");
+
+    // Reject the member
+    const { rows: updatedMember } = await q<Member>(
+      `UPDATE members
+       SET status = 'rejected', reviewed_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [memberId]
+    );
+
+    return updatedMember[0];
+  });
+}
+
+export async function getPendingJoinRequests(circleId: string): Promise<Member[]> {
+  const { rows } = await query<Member>(
+    "SELECT * FROM members WHERE circle_id = $1 AND status = 'pending' ORDER BY joined_at ASC",
+    [circleId]
+  );
+  return rows;
 }

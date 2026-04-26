@@ -36,16 +36,17 @@ export interface Circle {
 }
 
 // ─── Membership ───────────────────────────────────────────────────────────────
-export type MemberStatus = "pending" | "active" | "defaulted" | "completed";
+export type MemberStatus = "pending" | "active" | "rejected" | "defaulted" | "completed";
 
 export interface Member {
   id: string;
   circleId: string;
   userId: string;
-  position: number;           // payout order (1 = first to receive)
+  position: number | null;    // payout order (1 = first to receive), null for pending members
   status: MemberStatus;
   hasReceivedPayout: boolean;
   joinedAt: Date;
+  reviewedAt?: Date;          // when creator approved/rejected the request
 }
 
 // ─── Contribution ─────────────────────────────────────────────────────────────
