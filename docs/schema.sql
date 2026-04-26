@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255),
   stellar_public_key VARCHAR(56),
   reputation_score INTEGER NOT NULL DEFAULT 0 CHECK (reputation_score >= 0 AND reputation_score <= 100),
+  sms_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   INDEX idx_users_phone (phone)
 );
