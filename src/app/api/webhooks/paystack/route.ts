@@ -33,20 +33,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing reference" }, { status: 400 });
   }
 
-  // Idempotency: skip if this reference was already processed
+  // Idempotency: skip if already confirmed
   const { rows } = await query<{ id: string }>(
-    `SELECT id FROM contributions WHERE tx_hash = $1 AND status = 'confirmed' LIMIT 1`,
+    `SELECT id FROM contributions WHERE paystack_reference = $1 AND status = 'confirmed' LIMIT 1`,
     [reference]
   );
   if (rows.length > 0) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
-  // Confirm the pending contribution matching this reference
+  // Confirm the pending contribution matching this paystack_reference
   await query(
     `UPDATE contributions
      SET status = 'confirmed', tx_hash = $1
-     WHERE tx_hash = $1 AND status = 'pending'`,
+     WHERE paystack_reference = $1 AND status = 'pending'`,
     [reference]
   );
 

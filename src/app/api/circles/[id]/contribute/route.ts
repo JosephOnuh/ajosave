@@ -5,6 +5,7 @@ import { getCircleById, getMembersByCircle } from "@/server/services/circle.serv
 import { initializePayment } from "@/lib/paystack";
 import { serverConfig } from "@/server/config";
 import { withErrorHandler } from "@/server/middleware";
+import { query } from "@/lib/db";
 import { randomUUID } from "crypto";
 import type { ApiResponse } from "@/types";
 
@@ -42,7 +43,24 @@ export const POST = withErrorHandler(async (_req: NextRequest, ctx: unknown) => 
     );
   }
 
-  const reference = `ajo-${params.id}-${circle.currentCycle}-${randomUUID().slice(0, 8)}`;
+  // Deterministic reference: ajo-{circleId}-{memberId}-{cycleNumber}
+  const reference = `ajo-${params.id}-${member.id}-${circle.currentCycle}`;
+
+  // Return existing authorizationUrl if a pending contribution already exists for this cycle
+  const { rows: existing } = await query<{ paystack_reference: string; authorization_url: string }>(
+    `SELECT paystack_reference, authorization_url
+     FROM contributions
+     WHERE member_id = $1 AND cycle_number = $2 AND status = 'pending'
+     LIMIT 1`,
+    [member.id, circle.currentCycle]
+  );
+  if (existing.length > 0 && existing[0].authorization_url) {
+    return NextResponse.json<ApiResponse<{ authorizationUrl: string; reference: string }>>({
+      success: true,
+      data: { authorizationUrl: existing[0].authorization_url, reference: existing[0].paystack_reference },
+    });
+  }
+
   const callbackUrl = `${serverConfig.app.url}/circles/${params.id}/contribute/callback?reference=${reference}`;
 
   const { authorizationUrl } = await initializePayment({
@@ -57,6 +75,16 @@ export const POST = withErrorHandler(async (_req: NextRequest, ctx: unknown) => 
       cycleNumber: circle.currentCycle,
     },
   });
+
+  // Upsert pending contribution with paystack_reference and authorization_url
+  await query(
+    `INSERT INTO contributions (id, circle_id, member_id, cycle_number, amount_usdc, status, paystack_reference, authorization_url)
+     VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)
+     ON CONFLICT (member_id, cycle_number) DO UPDATE
+       SET paystack_reference = EXCLUDED.paystack_reference,
+           authorization_url  = EXCLUDED.authorization_url`,
+    [randomUUID(), params.id, member.id, circle.currentCycle, circle.contributionUsdc, reference, authorizationUrl]
+  );
 
   return NextResponse.json<ApiResponse<{ authorizationUrl: string; reference: string }>>({
     success: true,

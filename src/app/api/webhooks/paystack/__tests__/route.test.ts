@@ -1,3 +1,6 @@
+/**
+ * @jest-environment node
+ */
 import { POST } from "@/app/api/webhooks/paystack/route";
 import { NextRequest } from "next/server";
 import { createHmac } from "crypto";
@@ -26,7 +29,7 @@ function makeRequest(body: object, signature?: string): NextRequest {
 
 const CHARGE_SUCCESS = {
   event: "charge.success",
-  data: { reference: "ref_abc123" },
+  data: { reference: "ajo-circle-1-member-1-2" },
 };
 
 beforeEach(() => jest.clearAllMocks());
@@ -53,9 +56,7 @@ describe("POST /api/webhooks/paystack", () => {
     expect(res.status).toBe(400);
   });
 
-  it("confirms contribution on charge.success", async () => {
-    // First query: idempotency check returns no rows
-    // Second query: update contribution
+  it("confirms contribution on charge.success using paystack_reference", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any)
       .mockResolvedValueOnce({ rows: [], rowCount: 1 } as any);
@@ -66,17 +67,17 @@ describe("POST /api/webhooks/paystack", () => {
     const json = await res.json();
     expect(json.received).toBe(true);
 
-    // Idempotency check
+    // Idempotency check uses paystack_reference
     expect(mockQuery).toHaveBeenNthCalledWith(
       1,
-      expect.stringContaining("SELECT id FROM contributions"),
-      ["ref_abc123"]
+      expect.stringContaining("paystack_reference = $1"),
+      ["ajo-circle-1-member-1-2"]
     );
-    // Confirm contribution
+    // Confirm update uses paystack_reference
     expect(mockQuery).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining("UPDATE contributions"),
-      ["ref_abc123"]
+      expect.stringContaining("paystack_reference = $1"),
+      ["ajo-circle-1-member-1-2"]
     );
   });
 
@@ -88,7 +89,6 @@ describe("POST /api/webhooks/paystack", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.duplicate).toBe(true);
-    // Only the idempotency SELECT, no UPDATE
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });
