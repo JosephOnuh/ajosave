@@ -20,6 +20,21 @@
 .btn--lg { padding: var(--space-4) var(--space-8); font-size: var(--text-base); }
 .btn--full { width: 100%; }
 
+/* Button spinner */
+.btn-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.6s linear infinite;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ─── Input ───────────────────────────────────────────────────────────────── */
 .input-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .input-label { font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text-secondary); }
