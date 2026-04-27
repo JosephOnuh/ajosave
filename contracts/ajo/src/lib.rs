@@ -234,6 +234,23 @@ impl AjoContract {
 
         let members: Vec<Address> = env.storage().instance().get(&DataKey::Members).expect("not initialized");
         let max_members: u32 = env.storage().instance().get(&DataKey::MaxMembers).expect("not initialized");
+
+        for m in members.iter() {
+            let paid: bool = env
+                .storage()
+                .instance()
+                .get(&DataKey::Contributions(m.clone(), current_cycle))
+                .unwrap_or(false);
+            if !paid {
+                env.events().publish(
+                    (Symbol::new(&env, "defaulted"),),
+                    (m, current_cycle),
+                );
+            }
+        }
+
+        // Recipient is the member at position (current_cycle - 1)
+        let recipient = members.get(current_cycle - 1).expect("invalid cycle");
         let payout_order: Vec<u32> = env.storage().instance().get(&DataKey::PayoutOrder).unwrap_or_else(|_| {
             // Default to join order if no custom order set
             let mut default_order = Vec::new(&env);
@@ -500,6 +517,53 @@ mod tests {
         let (_, members, _, _, client) = setup(&env);
         for m in members.iter() { client.join(m); }
         client.contribute(&members.get(0).unwrap()); // second contribution same cycle
+    }
+
+    #[test]
+    fn test_defaulted_event() {
+        use soroban_sdk::{testutils::Events, TryFromVal};
+
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (_, members, _, _, client) = setup(&env);
+
+        // All 3 members join (cycle 1 contributions recorded automatically via join)
+        for m in members.iter() {
+            client.join(m);
+        }
+
+        // Cycle 1 payout — no defaults (join records each member's cycle-1 contribution)
+        env.ledger().with_mut(|l| l.timestamp = 86401);
+        client.payout();
+
+        // Only members[0] and members[1] contribute for cycle 2; members[2] defaults
+        client.contribute(&members.get(0).unwrap());
+        client.contribute(&members.get(1).unwrap());
+
+        env.ledger().with_mut(|l| l.timestamp = 172802);
+        client.payout();
+
+        let defaulter = members.get(2).unwrap();
+        let defaulted_sym = Symbol::new(&env, "defaulted");
+
+        let found = env.events().all().iter().any(|(_, topics, data)| {
+            if topics.len() != 1 {
+                return false;
+            }
+            let Ok(sym) = Symbol::try_from_val(&env, &topics.get(0).unwrap()) else {
+                return false;
+            };
+            if sym != defaulted_sym {
+                return false;
+            }
+            let Ok((addr, cycle)) = <(Address, u32)>::try_from_val(&env, data) else {
+                return false;
+            };
+            addr == defaulter && cycle == 2
+        });
+
+        assert!(found, "no 'defaulted' event emitted for members[2] on cycle 2");
     }
 }
 
