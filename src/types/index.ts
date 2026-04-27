@@ -22,7 +22,8 @@ export interface Circle {
   name: string;
   creatorId: string;
   contributionUsdc: string;   // per-member per-cycle amount
-  contributionNgn: number;
+  contributionFiat: number;   // renamed from contributionNgn
+  contributionCurrency: SupportedCurrency;
   maxMembers: number;
   cycleFrequency: CycleFrequency;
   payoutMethod: PayoutMethod;

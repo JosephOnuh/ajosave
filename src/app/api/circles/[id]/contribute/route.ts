@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCircleById, getMembersByCircle } from "@/server/services/circle.service";
-import { initializePayment, ngnToKobo } from "@/lib/paystack";
+import { initializePayment } from "@/lib/paystack";
 import { serverConfig } from "@/server/config";
 import { withErrorHandler } from "@/server/middleware";
 import { randomUUID } from "crypto";
@@ -47,7 +47,8 @@ export const POST = withErrorHandler(async (_req: NextRequest, ctx: unknown) => 
 
   const { authorizationUrl } = await initializePayment({
     email: (session.user as { email?: string }).email ?? `${userId}@ajosave.app`,
-    amountKobo: ngnToKobo(circle.contributionNgn),
+    amount: circle.contributionFiat,
+    currency: circle.contributionCurrency,
     reference,
     callbackUrl,
     metadata: {

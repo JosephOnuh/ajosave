@@ -74,6 +74,13 @@ export async function processCyclePayout(
 
     if (circle.currentCycle >= circleMembers.length) {
       await updateCircleStatus(circleId, "completed");
+      
+      // Send completion notifications to all members
+      for (const member of circleMembers) {
+        await sendCircleCompletedNotification(member.userId, circle.name).catch((err) =>
+          console.error("[payout] Failed to send completion notification:", err)
+        );
+      }
     }
 
     return payout;

@@ -2,10 +2,13 @@ import { z } from "zod";
 
 export const createCircleSchema = z.object({
   name: z.string().min(3, "Circle name must be at least 3 characters").max(60),
-  contributionNgn: z
+  contributionAmount: z
     .number()
-    .min(1000, "Minimum contribution is ₦1,000")
-    .max(5_000_000, "Maximum contribution is ₦5,000,000"),
+    .min(10, "Minimum contribution is 10 units")
+    .max(5_000_000, "Maximum contribution is 5,000,000 units"),
+  contributionCurrency: z.enum(["NGN", "GBP", "USD", "EUR"], {
+    errorMap: () => ({ message: "Currency must be NGN, GBP, USD, or EUR" }),
+  }),
   maxMembers: z.number().min(2, "Minimum 2 members").max(20, "Maximum 20 members"),
   cycleFrequency: z.enum(["weekly", "biweekly", "monthly"]),
   payoutMethod: z.enum(["fixed", "randomized"]).default("fixed"),

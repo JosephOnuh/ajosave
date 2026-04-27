@@ -30,6 +30,11 @@ pub enum DataKey {
     NextPayoutTime,
     Contributions(Address, u32), // (member, cycle) → bool
     Completed,
+    // Reputation tracking
+    MemberReputation(Address), // member → reputation score (0-100)
+    TotalCirclesCompleted(Address), // member → count of completed circles
+    OnTimeContributions(Address), // member → count of on-time contributions
+    TotalContributions(Address), // member → total contribution count
 }
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
@@ -157,6 +162,33 @@ impl AjoContract {
 
         env.storage().instance().set(&DataKey::Contributions(member.clone(), current_cycle), &true);
 
+        // Update reputation: track on-time contributions
+        let next_payout_time: u64 = env.storage().instance().get(&DataKey::NextPayoutTime).expect("not initialized");
+        let is_on_time = env.ledger().timestamp() < next_payout_time;
+        
+        if is_on_time {
+            let on_time_count: u32 = env
+                .storage()
+                .persistent()
+                .get(&DataKey::OnTimeContributions(member.clone()))
+                .unwrap_or(0);
+            env.storage()
+                .persistent()
+                .set(&DataKey::OnTimeContributions(member.clone()), &(on_time_count + 1));
+        }
+
+        let total_contributions: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TotalContributions(member.clone()))
+            .unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&DataKey::TotalContributions(member.clone()), &(total_contributions + 1));
+
+        // Recalculate reputation score
+        Self::update_reputation(&env, &member);
+
         env.events().publish((Symbol::new(&env, "contributed"),), (member, current_cycle));
     }
 
@@ -227,12 +259,107 @@ impl AjoContract {
         // Advance or complete
         if current_cycle >= max_members {
             env.storage().instance().set(&DataKey::Completed, &true);
+            
+            // Update reputation for all members upon circle completion
+            for member in members.iter() {
+                let circles_completed: u32 = env
+                    .storage()
+                    .persistent()
+                    .get(&DataKey::TotalCirclesCompleted(member.clone()))
+                    .unwrap_or(0);
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::TotalCirclesCompleted(member.clone()), &(circles_completed + 1));
+                
+                Self::update_reputation(&env, &member);
+            }
+            
             env.events().publish((Symbol::new(&env, "completed"),), ());
         } else {
             let interval: u64 = env.storage().instance().get(&DataKey::CycleIntervalSecs).expect("not initialized");
             env.storage().instance().set(&DataKey::CurrentCycle, &(current_cycle + 1));
             env.storage().instance().set(&DataKey::NextPayoutTime, &(env.ledger().timestamp() + interval));
         }
+    }
+
+    /// Internal: Calculate and update reputation score for a member
+    /// Score is based on:
+    /// - On-time contribution rate (70% weight)
+    /// - Number of completed circles (30% weight)
+    fn update_reputation(env: &Env, member: &Address) {
+        let on_time: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::OnTimeContributions(member.clone()))
+            .unwrap_or(0);
+        let total: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TotalContributions(member.clone()))
+            .unwrap_or(1); // avoid division by zero
+        let circles_completed: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TotalCirclesCompleted(member.clone()))
+            .unwrap_or(0);
+
+        // On-time rate: 0-70 points
+        let on_time_score = if total > 0 {
+            (on_time * 70) / total
+        } else {
+            0
+        };
+
+        // Completed circles: 0-30 points (capped at 10 circles)
+        let circles_score = if circles_completed >= 10 {
+            30
+        } else {
+            circles_completed * 3
+        };
+
+        let reputation = on_time_score + circles_score;
+        env.storage()
+            .persistent()
+            .set(&DataKey::MemberReputation(member.clone()), &reputation);
+
+        env.events().publish(
+            (Symbol::new(&env, "reputation_updated"),),
+            (member.clone(), reputation),
+        );
+    }
+
+    /// Read-only: get reputation score for a member (0-100)
+    pub fn get_reputation(env: Env, member: Address) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::MemberReputation(member))
+            .unwrap_or(0)
+    }
+
+    /// Read-only: get detailed reputation stats for a member
+    pub fn get_reputation_stats(env: Env, member: Address) -> (u32, u32, u32, u32) {
+        let reputation: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::MemberReputation(member.clone()))
+            .unwrap_or(0);
+        let circles_completed: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TotalCirclesCompleted(member.clone()))
+            .unwrap_or(0);
+        let on_time: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::OnTimeContributions(member.clone()))
+            .unwrap_or(0);
+        let total: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TotalContributions(member))
+            .unwrap_or(0);
+
+        (reputation, circles_completed, on_time, total)
     }
 
     /// Read-only: get circle state.
