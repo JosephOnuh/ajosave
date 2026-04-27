@@ -296,3 +296,37 @@ export async function getPendingJoinRequests(circleId: string): Promise<Member[]
   );
   return rows;
 }
+
+/**
+ * Cancel an open circle and mark all confirmed contributions as refund-pending.
+ * Only the creator can cancel; only circles with status 'open' can be cancelled.
+ */
+export async function cancelCircle(
+  circleId: string,
+  requesterId: string
+): Promise<Circle> {
+  return transaction(async (q) => {
+    const { rows: circleRows } = await q<Circle>(
+      "SELECT * FROM circles WHERE id = $1 FOR UPDATE",
+      [circleId]
+    );
+    const circle = circleRows[0];
+    if (!circle) throw new Error("Circle not found");
+    if (circle.creatorId !== requesterId) throw new Error("Only the creator can cancel a circle");
+    if (circle.status !== "open") throw new Error("Only open circles can be cancelled");
+
+    // Mark contributions as refund-pending so the refund worker can process them
+    await q(
+      `UPDATE contributions
+       SET status = 'refund_pending'
+       WHERE circle_id = $1 AND status = 'confirmed'`,
+      [circleId]
+    );
+
+    const { rows: updated } = await q<Circle>(
+      "UPDATE circles SET status = 'cancelled', updated_at = NOW() WHERE id = $1 RETURNING *",
+      [circleId]
+    );
+    return updated[0];
+  });
+}

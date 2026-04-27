@@ -24,6 +24,16 @@ export const verifyOtpSchema = z.object({
   otp: z.string().length(6),
 });
 
+export const sendOtpSchema = z.object({
+  phone: z.string().regex(/^\+?[1-9]\d{9,14}$/, "Invalid phone number"),
+});
+
+export const smsPreferencesSchema = z.object({
+  enabled: z.boolean({ invalid_type_error: "enabled must be a boolean" }),
+});
+
 export type CreateCircleInput = z.infer<typeof createCircleSchema>;
 export type JoinCircleInput = z.infer<typeof joinCircleSchema>;
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
+export type SendOtpInput = z.infer<typeof sendOtpSchema>;
+export type SmsPreferencesInput = z.infer<typeof smsPreferencesSchema>;

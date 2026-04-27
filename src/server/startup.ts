@@ -4,6 +4,7 @@
  */
 
 import { startHorizonStream } from "./services/horizon-stream.service";
+import { closePool } from "@/lib/db";
 
 let initialized = false;
 
@@ -47,6 +48,8 @@ export async function shutdownServices(): Promise<void> {
 
   const { stopHorizonStream } = await import("./services/horizon-stream.service");
   stopHorizonStream();
+
+  await closePool();
 
   initialized = false;
   console.log("[startup] Services shut down");

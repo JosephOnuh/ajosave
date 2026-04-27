@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendOtp } from "@/lib/sms";
 import { rateLimit, withErrorHandler } from "@/server/middleware";
+import { sendOtpSchema } from "@/types/schemas";
 import type { ApiResponse } from "@/types";
 import { getRedis } from "@/lib/redis";
 import { isLockedOut } from "@/lib/lockout";
 
 export const POST = withErrorHandler(async (req: NextRequest) => {
-  const { phone } = await req.json();
-  if (!phone || !/^\+?[1-9]\d{9,14}$/.test(phone)) {
+  const body = await req.json();
+  const parsed = sendOtpSchema.safeParse(body);
+  if (!parsed.success) {
     return NextResponse.json<ApiResponse<never>>(
-      { success: false, error: "Invalid phone number" },
+      { success: false, error: parsed.error.errors[0].message },
       { status: 400 }
     );
   }
+
+  const { phone } = parsed.data;
 
   // Check for account lockout (brute-force protection)
   if (await isLockedOut(phone)) {

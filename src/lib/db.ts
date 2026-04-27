@@ -17,15 +17,24 @@ let pool: Pool | null = null;
 
 function getPool(): Pool {
   if (!pool) {
+    const poolSize = parseInt(process.env.DB_POOL_SIZE ?? "10", 10);
     pool = new Pool({
       connectionString: serverConfig.database.url,
-      max: 10,
+      max: poolSize,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
       ssl: serverConfig.stellar.network === "mainnet" ? { rejectUnauthorized: true } : false,
     });
   }
   return pool;
+}
+
+/** Gracefully close the connection pool. Call during server shutdown. */
+export async function closePool(): Promise<void> {
+  if (pool) {
+    await pool.end();
+    pool = null;
+  }
 }
 
 /**
