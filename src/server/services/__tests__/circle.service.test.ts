@@ -91,11 +91,29 @@ describe("circle.service", () => {
   });
 
   describe("listOpenCircles", () => {
-    it("should return open circles", async () => {
-      mockQuery.mockResolvedValue({ rows: [MOCK_CIRCLE], rowCount: 1 } as any);
+    it("should return paginated open circles with defaults", async () => {
+      mockQuery
+        .mockResolvedValueOnce({ rows: [MOCK_CIRCLE], rowCount: 1 } as any) // data query
+        .mockResolvedValueOnce({ rows: [{ count: "1" }], rowCount: 1 } as any); // count query
       const result = await listOpenCircles();
-      expect(result).toEqual([MOCK_CIRCLE]);
-      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("status = 'open'"));
+      expect(result).toEqual({ data: [MOCK_CIRCLE], total: 1, page: 1, limit: 20 });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("status = 'open'"), expect.anything());
+    });
+
+    it("should respect page and limit params", async () => {
+      mockQuery
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any)
+        .mockResolvedValueOnce({ rows: [{ count: "50" }], rowCount: 1 } as any);
+      const result = await listOpenCircles(3, 10);
+      expect(result).toEqual({ data: [], total: 50, page: 3, limit: 10 });
+    });
+
+    it("should cap limit at 100", async () => {
+      mockQuery
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any)
+        .mockResolvedValueOnce({ rows: [{ count: "0" }], rowCount: 1 } as any);
+      const result = await listOpenCircles(1, 999);
+      expect(result.limit).toBe(100);
     });
   });
 

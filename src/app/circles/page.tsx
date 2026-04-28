@@ -7,7 +7,7 @@ import styles from "./page.module.css";
 export const metadata: Metadata = { title: "Browse Circles" };
 
 export default async function CirclesPage() {
-  const circles = await listOpenCircles();
+  const { data: circles } = await listOpenCircles();
 
   return (
     <div className={styles.page}>

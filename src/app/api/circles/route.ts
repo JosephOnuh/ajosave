@@ -5,6 +5,7 @@ import { createCircleSchema } from "@/types/schemas";
 import { createCircle, listOpenCircles, getCirclesByUser } from "@/server/services/circle.service";
 import { withErrorHandler } from "@/server/middleware";
 import type { ApiResponse, Circle } from "@/types";
+import type { PaginatedCircles } from "@/server/services/circle.service";
 
 export const GET = withErrorHandler(async (req: NextRequest) => {
   const { searchParams } = new URL(req.url);
@@ -23,8 +24,10 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
     return NextResponse.json<ApiResponse<Circle[]>>({ success: true, data: circles });
   }
 
-  const circles = await listOpenCircles();
-  return NextResponse.json<ApiResponse<Circle[]>>({ success: true, data: circles });
+  const page = parseInt(searchParams.get("page") ?? "1", 10);
+  const limit = parseInt(searchParams.get("limit") ?? "20", 10);
+  const result = await listOpenCircles(page, limit);
+  return NextResponse.json<ApiResponse<PaginatedCircles>>({ success: true, data: result });
 });
 
 export const POST = withErrorHandler(async (req: NextRequest) => {

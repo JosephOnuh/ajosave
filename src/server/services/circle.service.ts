@@ -45,11 +45,29 @@ export async function getCircleById(id: string): Promise<Circle | null> {
   return rows[0] ?? null;
 }
 
-export async function listOpenCircles(): Promise<Circle[]> {
-  const { rows } = await query<Circle>(
-    "SELECT * FROM circles WHERE status = 'open' ORDER BY created_at DESC"
-  );
-  return rows;
+export interface PaginatedCircles {
+  data: Circle[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export async function listOpenCircles(page = 1, limit = 20): Promise<PaginatedCircles> {
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(100, Math.max(1, limit));
+  const offset = (safePage - 1) * safeLimit;
+
+  const [{ rows }, { rows: countRows }] = await Promise.all([
+    query<Circle>(
+      "SELECT * FROM circles WHERE status = 'open' ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+      [safeLimit, offset]
+    ),
+    query<{ count: string }>(
+      "SELECT COUNT(*) FROM circles WHERE status = 'open'"
+    ),
+  ]);
+
+  return { data: rows, total: parseInt(countRows[0].count, 10), page: safePage, limit: safeLimit };
 }
 
 export async function getCirclesByUser(userId: string): Promise<Circle[]> {
