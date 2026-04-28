@@ -14,7 +14,29 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const circle = await getCircleById(params.id);
-  return { title: circle?.name ?? "Circle" };
+  if (!circle) return { title: "Circle Not Found" };
+
+  const title = `${circle.name} | Ajosave`;
+  const description = `Join ${circle.name} — a savings circle with ₦${circle.contributionNgn.toLocaleString("en-NG")} contributions every ${circle.cycleFrequency}. Powered by Stellar.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url: `https://www.ajosave.app/circles/${params.id}`,
+      siteName: "Ajosave",
+      type: "website",
+      images: [{ url: "/og-default.svg", width: 1200, height: 630, alt: title }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: ["/og-default.svg"],
+    },
+  };
 }
 
 export default async function CircleDetailPage({ params }: Props) {
