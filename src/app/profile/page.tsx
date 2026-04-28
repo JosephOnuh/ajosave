@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 import type { ProfileData } from "@/app/api/profile/route";
+import type { ReferralData } from "@/app/api/referral/route";
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
@@ -14,6 +15,11 @@ export default function ProfilePage() {
   const [form, setForm] = useState({ displayName: "", email: "", stellarPublicKey: "" });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [referral, setReferral] = useState<ReferralData | null>(null);
+  const [referralCode, setReferralCode] = useState("");
+  const [referralMsg, setReferralMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [applyingCode, setApplyingCode] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/auth/login");
@@ -33,7 +39,40 @@ export default function ProfilePage() {
           });
         }
       });
+    fetch("/api/referral")
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setReferral(json.data); });
   }, [status]);
+
+  const handleCopyCode = () => {
+    if (!referral?.referralCode) return;
+    navigator.clipboard.writeText(referral.referralCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleApplyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setApplyingCode(true);
+    setReferralMsg(null);
+    try {
+      const res = await fetch("/api/referral", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: referralCode }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      setReferralMsg({ type: "success", text: "Referral code applied! Your referrer earned a reputation boost." });
+      setReferral((r) => r && { ...r, referredBy: referralCode });
+      setReferralCode("");
+    } catch (err) {
+      setReferralMsg({ type: "error", text: err instanceof Error ? err.message : "Failed to apply code." });
+    } finally {
+      setApplyingCode(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,6 +163,58 @@ export default function ProfilePage() {
               <span className={styles.statLabel}>On-time rate</span>
             </div>
           </div>
+        </section>
+
+        {/* ── Referral ── */}
+        <section className="card" style={{ marginBottom: "var(--space-6)" }}>
+          <h2 className={styles.sectionTitle}>Referral Program</h2>
+          {referral ? (
+            <>
+              <p className={styles.referralDesc}>
+                Share your code and earn +5 reputation for every friend who joins.
+              </p>
+              <div className={styles.referralCodeRow}>
+                <span className={styles.referralCode}>{referral.referralCode}</span>
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--sm"
+                  onClick={handleCopyCode}
+                >
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <p className={styles.referralStat}>
+                Friends referred: <strong>{referral.referralCount}</strong>
+              </p>
+              {referral.referredBy && (
+                <p className={styles.referralStat}>
+                  Referred by: <strong>{referral.referredBy}</strong>
+                </p>
+              )}
+              {!referral.referredBy && (
+                <form onSubmit={handleApplyCode} className={styles.referralForm}>
+                  <input
+                    className="input"
+                    placeholder="Enter a referral code"
+                    value={referralCode}
+                    onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                    maxLength={16}
+                    style={{ flex: 1 }}
+                  />
+                  <button type="submit" className="btn btn--primary btn--sm" disabled={applyingCode || !referralCode}>
+                    {applyingCode ? <span className="btn-spinner" aria-hidden="true" /> : "Apply"}
+                  </button>
+                </form>
+              )}
+              {referralMsg && (
+                <p className={`${styles.message} ${styles[referralMsg.type]}`} role="status">
+                  {referralMsg.text}
+                </p>
+              )}
+            </>
+          ) : (
+            <div className={`${styles.referralCode} skeleton`} style={{ height: "2rem", width: "8rem" }} />
+          )}
         </section>
 
         {/* ── Editable fields ── */}

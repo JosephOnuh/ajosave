@@ -6,6 +6,7 @@ import { CircleStatusBadge } from "@/components/ui/CircleStatusBadge";
 import { MemberPayoutList } from "@/components/circle/MemberPayoutList";
 import { CircleActions } from "@/components/circle/CircleActions";
 import { PayoutCountdown } from "@/components/circle/PayoutCountdown";
+import { PayoutHistory } from "@/components/circle/PayoutHistory";
 import { getCurrencySymbol, SupportedCurrency } from "@/lib/currency";
 import { format } from "date-fns";
 import type { Metadata } from "next";
@@ -76,6 +77,11 @@ export default async function CircleDetailPage({ params }: Props) {
         </div>
 
         <div className={styles.grid}>
+          <div className="card" style={{ gridColumn: "1 / -1" }}>
+            <h2 className={styles.sectionTitle}>Payout History</h2>
+            <PayoutHistory circleId={circle.id} />
+          </div>
+
           <div className="card">
             <h2 className={styles.sectionTitle}>Circle Details</h2>
             <dl className={styles.details}>
