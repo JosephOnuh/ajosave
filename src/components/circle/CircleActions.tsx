@@ -1,0 +1,96 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+
+interface Props {
+  circleId: string;
+  isCreator: boolean;
+  isMember: boolean;
+  status: string;
+}
+
+export function CircleActions({ circleId, isCreator, isMember, status }: Props) {
+  const router = useRouter();
+  const [modal, setModal] = useState<"cancel" | "leave" | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCancel = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/circles/${circleId}/cancel`, { method: "POST" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to cancel circle");
+    } finally {
+      setLoading(false);
+      setModal(null);
+    }
+  };
+
+  const handleLeave = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/circles/${circleId}/leave`, { method: "POST" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      router.push("/circles");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to leave circle");
+    } finally {
+      setLoading(false);
+      setModal(null);
+    }
+  };
+
+  const canCancel = isCreator && (status === "open" || status === "active");
+  const canLeave = isMember && !isCreator && status === "open";
+
+  if (!canCancel && !canLeave) return null;
+
+  return (
+    <>
+      <div style={{ display: "flex", gap: "var(--space-3)" }}>
+        {canLeave && (
+          <Button variant="ghost" size="sm" onClick={() => setModal("leave")}>
+            Leave Circle
+          </Button>
+        )}
+        {canCancel && (
+          <Button variant="ghost" size="sm" onClick={() => setModal("cancel")}>
+            Cancel Circle
+          </Button>
+        )}
+      </div>
+
+      {error && <p style={{ fontSize: "var(--text-xs)", color: "var(--color-error)" }}>{error}</p>}
+
+      <ConfirmModal
+        open={modal === "cancel"}
+        title="Cancel Circle"
+        message="Are you sure you want to cancel this circle? This action cannot be undone and all members will be notified."
+        confirmLabel="Yes, Cancel Circle"
+        loading={loading}
+        onConfirm={handleCancel}
+        onCancel={() => setModal(null)}
+      />
+
+      <ConfirmModal
+        open={modal === "leave"}
+        title="Leave Circle"
+        message="Are you sure you want to leave this circle? You will lose your position in the payout order."
+        confirmLabel="Yes, Leave Circle"
+        loading={loading}
+        onConfirm={handleLeave}
+        onCancel={() => setModal(null)}
+      />
+    </>
+  );
+}

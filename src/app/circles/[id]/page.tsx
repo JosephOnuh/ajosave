@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getCircleById, getMembersByCircle } from "@/server/services/circle.service";
 import { CircleStatusBadge } from "@/components/ui/CircleStatusBadge";
 import { MemberPayoutList } from "@/components/circle/MemberPayoutList";
+import { CircleActions } from "@/components/circle/CircleActions";
 import { format } from "date-fns";
 import type { Metadata } from "next";
 import styles from "./page.module.css";
@@ -50,6 +51,7 @@ export default async function CircleDetailPage({ params }: Props) {
 
   const userId = (session?.user as { id?: string } | undefined)?.id;
   const isCreator = userId === circle.creatorId;
+  const isMember = members.some((m) => m.userId === userId);
 
   return (
     <div className={styles.page}>
@@ -59,6 +61,14 @@ export default async function CircleDetailPage({ params }: Props) {
             <h1 className={styles.title}>{circle.name}</h1>
             <CircleStatusBadge status={circle.status} />
           </div>
+          {userId && (
+            <CircleActions
+              circleId={circle.id}
+              isCreator={isCreator}
+              isMember={isMember}
+              status={circle.status}
+            />
+          )}
         </div>
 
         <div className={styles.grid}>
