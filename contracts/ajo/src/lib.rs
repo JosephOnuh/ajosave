@@ -432,6 +432,30 @@ impl AjoContract {
         env.storage().instance().get(&DataKey::PayoutOrder).unwrap_or(vec![&env])
     }
 
+    /// Read-only: get contribution status for every member in a given cycle.
+    ///
+    /// Returns a `Vec` of `(Address, bool)` tuples — one per member — where
+    /// `true` means the member has contributed for `cycle` and `false` means
+    /// they have not yet (or defaulted).
+    pub fn get_contribution_status(env: Env, cycle: u32) -> Vec<(Address, bool)> {
+        let members: Vec<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::Members)
+            .unwrap_or(Vec::new(&env));
+
+        let mut result: Vec<(Address, bool)> = Vec::new(&env);
+        for member in members.iter() {
+            let paid: bool = env
+                .storage()
+                .instance()
+                .get(&DataKey::Contributions(member.clone(), cycle))
+                .unwrap_or(false);
+            result.push_back((member, paid));
+        }
+        result
+    }
+
     /// Upgrade the contract WASM. Admin-only.
     ///
     /// * `new_wasm_hash` – hash of the new WASM blob already uploaded to the network
@@ -647,6 +671,46 @@ mod tests {
         // Advance ledger past 100
         // env.ledger().with_mut(|l| l.sequence = 150);
         // client.get_state(); // This would panic if the contract expired
+    }
+
+    #[test]
+    fn test_get_contribution_status() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (_, members, _, _, client) = setup(&env);
+
+        // All 3 members join (cycle 1 contributions recorded via join)
+        for m in members.iter() {
+            client.join(m);
+        }
+
+        // All members should show contributed=true for cycle 1 (recorded during join)
+        let status = client.get_contribution_status(&1u32);
+        assert_eq!(status.len(), 3);
+        for (_, paid) in status.iter() {
+            assert!(paid, "all members should have contributed for cycle 1 via join");
+        }
+
+        // Advance to cycle 2
+        env.ledger().with_mut(|l| l.timestamp = 86401);
+        client.payout();
+
+        // No one has contributed for cycle 2 yet
+        let status2 = client.get_contribution_status(&2u32);
+        assert_eq!(status2.len(), 3);
+        for (_, paid) in status2.iter() {
+            assert!(!paid, "no member should have contributed for cycle 2 yet");
+        }
+
+        // Only member 0 contributes for cycle 2
+        client.contribute(&members.get(0).unwrap());
+
+        let status3 = client.get_contribution_status(&2u32);
+        let (_, m0_paid) = status3.get(0).unwrap();
+        let (_, m1_paid) = status3.get(1).unwrap();
+        assert!(m0_paid, "member 0 should show contributed");
+        assert!(!m1_paid, "member 1 should not show contributed yet");
     }
 
     #[test]
