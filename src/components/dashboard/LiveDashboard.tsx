@@ -60,10 +60,31 @@ export function LiveDashboard({ initialCircles }: LiveDashboardProps) {
 
       {circles.length === 0 ? (
         <div className={styles.empty}>
-          <p>You haven&apos;t joined any circles yet.</p>
-          <Link href="/circles" className="btn btn--primary">
-            Browse open circles
-          </Link>
+          <div className={styles.emptyIllustration} aria-hidden="true">
+            <svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Empty savings circle">
+              <circle cx="48" cy="48" r="44" stroke="var(--color-border)" strokeWidth="2" strokeDasharray="6 4" />
+              <circle cx="48" cy="20" r="6" fill="var(--color-bg-elevated)" stroke="var(--color-brand-primary)" strokeWidth="2" />
+              <circle cx="72" cy="34" r="6" fill="var(--color-bg-elevated)" stroke="var(--color-border)" strokeWidth="2" />
+              <circle cx="72" cy="62" r="6" fill="var(--color-bg-elevated)" stroke="var(--color-border)" strokeWidth="2" />
+              <circle cx="48" cy="76" r="6" fill="var(--color-bg-elevated)" stroke="var(--color-border)" strokeWidth="2" />
+              <circle cx="24" cy="62" r="6" fill="var(--color-bg-elevated)" stroke="var(--color-border)" strokeWidth="2" />
+              <circle cx="24" cy="34" r="6" fill="var(--color-bg-elevated)" stroke="var(--color-border)" strokeWidth="2" />
+              <circle cx="48" cy="48" r="10" fill="var(--color-brand-primary)" opacity="0.15" />
+              <text x="48" y="53" textAnchor="middle" fontSize="14" fill="var(--color-brand-primary)">₦</text>
+            </svg>
+          </div>
+          <h2 className={styles.emptyTitle}>Start your savings journey</h2>
+          <p className={styles.emptyText}>
+            You haven&apos;t joined any circles yet. Create your own or browse open circles to get started.
+          </p>
+          <div className={styles.emptyCtas}>
+            <Link href="/circles/create" className="btn btn--primary">
+              Create your first circle
+            </Link>
+            <Link href="/circles" className="btn btn--secondary">
+              Browse circles
+            </Link>
+          </div>
         </div>
       ) : (
         <div className={styles.grid}>
