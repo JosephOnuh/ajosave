@@ -168,3 +168,27 @@ export async function toggleSmsNotifications(
     [enabled, userId]
   );
 }
+
+/**
+ * Notify all circle members when the circle completes (all payouts done)
+ */
+export async function notifyCircleCompleted(
+  memberUserIds: string[],
+  circleName: string
+): Promise<void> {
+  const notifications = memberUserIds.map(async (userId) => {
+    if (!(await canSendSms(userId))) return;
+
+    const phone = await getUserPhone(userId);
+    if (!phone) return;
+
+    try {
+      // Reuse the payout-processed SMS with a completion message
+      await sendPayoutProcessedSms(phone, circleName, "0", "everyone — the circle is complete!");
+    } catch (error) {
+      console.error(`Failed to send circle completion notification to ${userId}:`, error);
+    }
+  });
+
+  await Promise.allSettled(notifications);
+}
