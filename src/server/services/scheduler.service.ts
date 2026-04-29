@@ -1,5 +1,9 @@
 import { query } from "@/lib/db";
-import { notifyPayoutReminder, notifyMissedContribution, notifyContributionReminder } from "./notification.service";
+import {
+  notifyPayoutReminder,
+  notifyMissedContribution,
+  notifyContributionReminder,
+} from "./notification.service";
 import { getMissedContributions } from "./contribution.service";
 import type { Circle, Member } from "@/types";
 
@@ -32,18 +36,17 @@ export async function sendPayoutReminders(): Promise<void> {
       if (!recipient) continue;
 
       const totalPot = (
-        parseFloat(circle.contributionUsdc) * 
-        (await query<Member>("SELECT COUNT(*) as count FROM members WHERE circle_id = $1 AND status = 'active'", [circle.id]))
-          .rows[0]?.count || 0
+        parseFloat(circle.contributionUsdc) *
+          (
+            await query<Member>(
+              "SELECT COUNT(*) as count FROM members WHERE circle_id = $1 AND status = 'active'",
+              [circle.id]
+            )
+          ).rows[0]?.count || 0
       ).toFixed(7);
 
       // Send reminder to recipient
-      await notifyPayoutReminder(
-        recipient.userId,
-        circle.name,
-        totalPot,
-        24
-      );
+      await notifyPayoutReminder(recipient.userId, circle.name, totalPot, 24);
     } catch (error) {
       console.error(`Failed to send payout reminder for circle ${circle.id}:`, error);
     }
@@ -69,10 +72,7 @@ export async function processMissedContributions(): Promise<void> {
 
       for (const { memberId, userId } of missed) {
         // Mark member as defaulted
-        await query(
-          "UPDATE members SET status = 'defaulted' WHERE id = $1",
-          [memberId]
-        );
+        await query("UPDATE members SET status = 'defaulted' WHERE id = $1", [memberId]);
 
         // Create missed contribution record
         await query(
@@ -81,6 +81,10 @@ export async function processMissedContributions(): Promise<void> {
            ON CONFLICT (member_id, cycle_number) DO NOTHING`,
           [circle.id, memberId, circle.currentCycle, circle.contributionUsdc]
         );
+
+        // Decrement user's reputation score for missed contribution
+        const { decrementReputationOnMissedContribution } = await import("./reputation.service");
+        await decrementReputationOnMissedContribution(userId);
 
         // Send notification
         await notifyMissedContribution(userId, circle.name, circle.contributionUsdc);
@@ -94,8 +98,8 @@ export async function processMissedContributions(): Promise<void> {
 type ReminderWindow = { hoursLeft: number; lowerBound: string; upperBound: string };
 
 const WINDOWS: ReminderWindow[] = [
-  { hoursLeft: 24, lowerBound: '23 hours', upperBound: '25 hours' },
-  { hoursLeft: 2,  lowerBound: '1 hour',   upperBound: '3 hours'  },
+  { hoursLeft: 24, lowerBound: "23 hours", upperBound: "25 hours" },
+  { hoursLeft: 2, lowerBound: "1 hour", upperBound: "3 hours" },
 ];
 
 /**
@@ -147,7 +151,7 @@ export async function sendContributionReminders(): Promise<void> {
                AND cycle_number = $3`,
             [member.id, circle.id, circle.currentCycle]
           );
-          if (statusRows.length > 0 && statusRows[0].status === 'missed') continue;
+          if (statusRows.length > 0 && statusRows[0].status === "missed") continue;
 
           // Check idempotency — has this reminder already been sent?
           const { rows: reminderRows } = await query(
