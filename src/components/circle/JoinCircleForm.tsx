@@ -25,6 +25,17 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
   const { connectionState, publicKey, error: walletError, connect, disconnect } = useFreighterWallet();
 
   useEffect(() => {
+    // Check if user has a saved Stellar key; show warning if not
+    fetch("/api/v1/profile")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && !json.data.stellarPublicKey) setNoSavedKey(true);
+        if (json.success && json.data.stellarPublicKey) setStellarPublicKey(json.data.stellarPublicKey);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (publicKey !== null) {
       setStellarPublicKey(publicKey);
     }
@@ -72,6 +83,11 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
 
   return (
     <div className="card">
+      {noSavedKey && (
+        <div role="alert" style={{ background: "rgba(234,179,8,0.1)", border: "1px solid rgba(234,179,8,0.4)", borderRadius: "var(--radius-md)", padding: "var(--space-3) var(--space-4)", marginBottom: "var(--space-4)", fontSize: "0.875rem", color: "var(--color-warning)" }}>
+          ⚠️ You have no Stellar public key saved. Payouts will be sent to the key you enter below. <a href="/profile" style={{ textDecoration: "underline" }}>Save it in your profile</a> to avoid re-entering it each time.
+        </div>
+      )}
       <div className={styles.info}>
         <p>You are joining <strong>{circle.name}</strong>.</p>
         <div className={styles.stats}>
