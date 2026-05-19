@@ -4,7 +4,7 @@ import type { Circle, Member, CircleStatus } from "@/types";
 import type { CreateCircleInput } from "@/types/schemas";
 import { getFiatPerUsdc } from "@/lib/fx";
 import { deployAjoContract } from "@/lib/soroban";
-import { sendUsdcPayment } from "@/lib/stellar";
+import { sendUsdcPayment, validateStellarRecipient } from "@/lib/stellar";
 import { notifyCircleCancelled } from "./notification.service";
 
 export const fiatToUsdc = async (amount: number, currency: string): Promise<string> => {
@@ -509,6 +509,7 @@ export async function cancelCircle(
     }
 
     try {
+      await validateStellarRecipient(stellar_public_key);
       const txHash = await sendUsdcPayment(stellar_public_key, total_usdc);
 
       // Mark contributions as refunded and record the tx hash

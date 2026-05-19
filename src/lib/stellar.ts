@@ -6,6 +6,7 @@ import {
   Operation,
   BASE_FEE,
   Networks,
+  StrKey,
 } from "@stellar/stellar-sdk";
 import { serverConfig } from "@/server/config";
 import logger from "@/lib/logger";
@@ -15,6 +16,26 @@ const server = new Horizon.Server(serverConfig.stellar.horizonUrl);
 const USDC = new Asset(serverConfig.usdc.assetCode, serverConfig.usdc.issuer);
 const networkPassphrase =
   serverConfig.stellar.network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET;
+
+type StellarBalance = {
+  asset_type: string;
+  asset_code?: string;
+  asset_issuer?: string;
+  balance: string;
+};
+
+type StellarAccountWithBalances = {
+  balances: StellarBalance[];
+};
+
+export function hasUsdcTrustline(account: StellarAccountWithBalances): boolean {
+  return account.balances.some(
+    (balance) =>
+      balance.asset_type !== "native" &&
+      balance.asset_code === USDC.getCode() &&
+      balance.asset_issuer === USDC.getIssuer()
+  );
+}
 
 /** Error codes that are safe to retry (transient). */
 function isRetryable(err: any): boolean {
@@ -29,7 +50,7 @@ function isRetryable(err: any): boolean {
   if (resultCodes) {
     // tx_bad_seq is explicitly NOT retryable as per requirements (fatal sequence mismatch)
     if (resultCodes.transaction === "tx_bad_seq") return false;
-    
+
     // Most other transaction/operation failures (underfunded, etc.) are fatal
     // and shouldn't be retried blindly.
   }
@@ -124,6 +145,26 @@ export async function getUsdcBalance(
     return { balance: bal?.balance ?? "0", hasTrustline: !!bal };
   } catch {
     return { balance: "0", hasTrustline: false };
+  }
+}
+
+/**
+ * Validate a Stellar public key, on-chain account existence, and configured USDC trustline.
+ */
+export async function validateStellarRecipient(publicKey: string): Promise<void> {
+  if (!StrKey.isValidEd25519PublicKey(publicKey)) {
+    throw new Error(`Invalid Stellar public key: ${publicKey}`);
+  }
+
+  let account: StellarAccountWithBalances;
+  try {
+    account = await server.loadAccount(publicKey);
+  } catch {
+    throw new Error(`Stellar account not found on-chain: ${publicKey}`);
+  }
+
+  if (!hasUsdcTrustline(account)) {
+    throw new Error(`Recipient account has no USDC trustline: ${publicKey}`);
   }
 }
 
