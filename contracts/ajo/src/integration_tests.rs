@@ -284,6 +284,86 @@ mod integration {
         assert!(!completed);
     }
 
+    // ─── Upgrade tests ────────────────────────────────────────────────────────
+
+    /// upgrade: admin can upgrade the contract WASM and event is emitted
+    #[test]
+    fn test_upgrade_emits_event() {
+        use soroban_sdk::{testutils::Events, BytesN, TryFromVal};
+
+        let f = setup_fixture(2);
+        let new_wasm_hash = BytesN::from_array(&f.env, &[1u8; 32]);
+
+        f.client.upgrade(&new_wasm_hash);
+
+        let upgraded_sym = soroban_sdk::Symbol::new(&f.env, "upgraded");
+        let found = f.env.events().all().iter().any(|(_, topics, data)| {
+            if topics.len() != 1 {
+                return false;
+            }
+            let Ok(sym) = soroban_sdk::Symbol::try_from_val(&f.env, &topics.get(0).unwrap()) else {
+                return false;
+            };
+            if sym != upgraded_sym {
+                return false;
+            }
+            let Ok(hash) = BytesN::<32>::try_from_val(&f.env, data) else {
+                return false;
+            };
+            hash == new_wasm_hash
+        });
+
+        assert!(found, "upgraded event should be emitted with the new wasm hash");
+    }
+
+    /// upgrade: non-admin cannot upgrade (wrong auth → panics)
+    #[test]
+    #[should_panic]
+    fn test_upgrade_non_admin_panics() {
+        use soroban_sdk::{
+            testutils::{MockAuth, MockAuthInvoke},
+            BytesN, IntoVal,
+        };
+
+        let f = setup_fixture(2);
+        let non_admin = Address::generate(&f.env);
+        let new_wasm_hash = BytesN::from_array(&f.env, &[2u8; 32]);
+
+        // Authorize as non_admin instead of the real admin — should fail
+        f.env.mock_auths(&[MockAuth {
+            address: &non_admin,
+            invoke: &MockAuthInvoke {
+                contract: &f.client.address,
+                fn_name: "upgrade",
+                args: (new_wasm_hash.clone(),).into_val(&f.env),
+                sub_invokes: &[],
+            },
+        }]);
+
+        f.client.upgrade(&new_wasm_hash);
+    }
+
+    /// upgrade: state is preserved after upgrade call
+    #[test]
+    fn test_upgrade_preserves_state() {
+        use soroban_sdk::BytesN;
+
+        let f = setup_fixture(2);
+
+        // Join one member to set some state
+        f.client.join(&f.members.get(0).unwrap());
+
+        let (cycle_before, max_before, _, completed_before) = f.client.get_state();
+
+        let new_wasm_hash = BytesN::from_array(&f.env, &[3u8; 32]);
+        f.client.upgrade(&new_wasm_hash);
+
+        let (cycle_after, max_after, _, completed_after) = f.client.get_state();
+        assert_eq!(cycle_before, cycle_after, "cycle should be unchanged after upgrade");
+        assert_eq!(max_before, max_after, "max_members should be unchanged after upgrade");
+        assert_eq!(completed_before, completed_after, "completed flag should be unchanged after upgrade");
+    }
+
     /// Pot distribution: each member ends up net-positive after receiving payout
     #[test]
     fn test_net_positive_for_all_members() {

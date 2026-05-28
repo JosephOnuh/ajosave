@@ -171,6 +171,8 @@ STELLAR_AJO_CONTRACT_ID=CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 
+See [CHANGELOG.md](CHANGELOG.md) for a full history of changes.
+
 - Bugs → [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
 - Features → [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)
 - Security → **security@ajosave.app**

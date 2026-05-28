@@ -1,11 +1,39 @@
-import { query } from "@/lib/db";
-import { sendUsdcPayment } from "@/lib/stellar";
+import { query, transaction } from "@/lib/db";
+import { sendUsdcPayment, horizonServer, USDC } from "@/lib/stellar";
 import { invokeContractPayout } from "@/lib/soroban";
 import { getCircleById, getMembersByCircle, updateCircleStatus } from "./circle.service";
 import { withPayoutLock, PayoutLockError } from "./payout-lock";
-import { notifyPayoutProcessed } from "./notification.service";
+import { notifyPayoutProcessed, notifyCircleCompleted } from "./notification.service";
 import type { Payout } from "@/types";
 import { randomUUID } from "crypto";
+import { StrKey } from "@stellar/stellar-sdk";
+
+/**
+ * Validate a Stellar public key format, account existence, and USDC trustline.
+ * Throws a descriptive error if any check fails.
+ */
+async function validateStellarRecipient(publicKey: string): Promise<void> {
+  if (!StrKey.isValidEd25519PublicKey(publicKey)) {
+    throw new Error(`Invalid Stellar public key: ${publicKey}`);
+  }
+
+  let account;
+  try {
+    account = await horizonServer.loadAccount(publicKey);
+  } catch {
+    throw new Error(`Stellar account not found on-chain: ${publicKey}`);
+  }
+
+  const hasTrustline = account.balances.some(
+    (b) =>
+      b.asset_type !== "native" &&
+      (b as { asset_code: string; asset_issuer: string }).asset_code === USDC.getCode() &&
+      (b as { asset_code: string; asset_issuer: string }).asset_issuer === USDC.getIssuer()
+  );
+  if (!hasTrustline) {
+    throw new Error(`Recipient account has no USDC trustline: ${publicKey}`);
+  }
+}
 
 export { PayoutLockError };
 
@@ -29,16 +57,25 @@ export async function processCyclePayout(
     if (circle.status !== "active") throw new Error("Circle is not active");
 
     const circleMembers = await getMembersByCircle(circleId);
+    // Only count active members (exclude defaulted) for the pot
+    const activeMembers = circleMembers.filter((m) => m.status === "active");
     const totalPot = (
-      parseFloat(circle.contributionUsdc) * circleMembers.length
+      parseFloat(circle.contributionUsdc) * activeMembers.length
     ).toFixed(7);
+
+    // Guard: reject if the current cycle's recipient already received a payout
+    const recipientMemberForGuard = circleMembers[circle.currentCycle - 1];
+    if (recipientMemberForGuard?.hasReceivedPayout) {
+      throw new Error(`Member has already received payout for cycle ${circle.currentCycle}`);
+    }
 
     let txHash: string;
     if (circle.contractId) {
       // Soroban path: contract handles transfer, backend only triggers payout()
       txHash = await invokeContractPayout(circle.contractId);
     } else {
-      // Horizon fallback for circles without a deployed contract
+      // Horizon fallback: validate key, account existence, and USDC trustline first
+      await validateStellarRecipient(recipientStellarKey);
       txHash = await sendUsdcPayment(recipientStellarKey, totalPot);
     }
 
@@ -46,18 +83,42 @@ export async function processCyclePayout(
     const recipientMember = circleMembers[circle.currentCycle - 1];
     const recipientMemberId = recipientMember?.id ?? "";
 
-    // Persist payout to PostgreSQL
-    const { rows } = await query<Payout>(
-      `INSERT INTO payouts (id, circle_id, recipient_member_id, cycle_number, amount_usdc, tx_hash, paid_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       RETURNING id, circle_id as "circleId", recipient_member_id as "recipientMemberId", 
-                 cycle_number as "cycleNumber", amount_usdc as "amountUsdc", tx_hash as "txHash", paid_at as "paidAt"`,
-      [payoutId, circleId, recipientMemberId, circle.currentCycle, totalPot, txHash]
-    );
+    // Atomically persist the payout record and mark the member as paid.
+    // The UNIQUE constraint on (circle_id, cycle_number) provides a second
+    // layer of idempotency at the database level — a duplicate call for the
+    // same cycle will fail with a unique-violation error before any money moves.
+    let payout: Payout;
+    try {
+      payout = await transaction(async (q) => {
+        const { rows } = await q<Payout>(
+          `INSERT INTO payouts (id, circle_id, recipient_member_id, cycle_number, amount_usdc, tx_hash, paid_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW())
+           RETURNING id, circle_id as "circleId", recipient_member_id as "recipientMemberId",
+                     cycle_number as "cycleNumber", amount_usdc as "amountUsdc", tx_hash as "txHash", paid_at as "paidAt"`,
+          [payoutId, circleId, recipientMemberId, circle.currentCycle, totalPot, txHash]
+        );
 
-    const payout = rows[0];
+        // Mark recipient as having received their payout within the same transaction
+        // so the flag is always consistent with the payout record.
+        if (recipientMemberId) {
+          await q(
+            "UPDATE members SET has_received_payout = TRUE, updated_at = NOW() WHERE id = $1",
+            [recipientMemberId]
+          );
+        }
 
-    // Send SMS notifications to all members
+        return rows[0];
+      });
+    } catch (err: unknown) {
+      // Surface duplicate-cycle violations as a clean application error
+      const pg = err as { code?: string };
+      if (pg.code === "23505") {
+        throw new Error(`Payout for cycle ${circle.currentCycle} has already been processed`);
+      }
+      throw err;
+    }
+
+    // Send SMS notifications to all members (async, non-blocking)
     if (recipientMember) {
       const memberUserIds = circleMembers.map(m => m.userId);
       const { rows: recipientUser } = await query<{ display_name: string }>(
@@ -65,8 +126,7 @@ export async function processCyclePayout(
         [recipientMember.userId]
       );
       const recipientName = recipientUser[0]?.display_name ?? "Member";
-      
-      // Notify all members about the payout (async, don't block)
+
       notifyPayoutProcessed(memberUserIds, circle.name, totalPot, recipientName).catch(err => {
         console.error("Failed to send payout notifications:", err);
       });
@@ -74,6 +134,12 @@ export async function processCyclePayout(
 
     if (circle.currentCycle >= circleMembers.length) {
       await updateCircleStatus(circleId, "completed");
+
+      // Send completion notifications to all members (async, non-blocking)
+      const memberUserIds = circleMembers.map(m => m.userId);
+      notifyCircleCompleted(memberUserIds, circle.name).catch((err) =>
+        console.error("[payout] Failed to send completion notifications:", err)
+      );
     }
 
     return payout;

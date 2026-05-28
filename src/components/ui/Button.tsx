@@ -18,7 +18,14 @@ export function Button({
       aria-busy={loading}
       {...props}
     >
-      {loading ? <><span className="sr-only">Loading…</span><span aria-hidden>…</span></> : children}
+      {loading ? (
+        <>
+          <span className="sr-only">Loading…</span>
+          <span className="btn-spinner" aria-hidden="true"></span>
+        </>
+      ) : (
+        children
+      )}
     </button>
   );
 }

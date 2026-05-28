@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Circle, Member } from "@/types";
 import { CircleStatusBadge } from "@/components/ui/CircleStatusBadge";
+import { getCurrencySymbol, SupportedCurrency } from "@/lib/currency";
 import { format } from "date-fns";
 import styles from "./CircleCard.module.css";
 
@@ -12,6 +13,7 @@ interface CircleCardProps {
 
 export function CircleCard({ circle, members, showJoin = false }: CircleCardProps) {
   const spotsLeft = circle.maxMembers - members.length;
+  const currencySymbol = getCurrencySymbol(circle.contributionCurrency as SupportedCurrency);
 
   return (
     <article className={styles.card}>
@@ -21,7 +23,8 @@ export function CircleCard({ circle, members, showJoin = false }: CircleCardProp
       </div>
 
       <div className={styles.amount}>
-        ₦{circle.contributionNgn.toLocaleString("en-NG")}
+        {currencySymbol}
+        {circle.contributionFiat.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
         <span className={styles.freq}>/ {circle.cycleFrequency}</span>
       </div>
 
@@ -37,6 +40,7 @@ export function CircleCard({ circle, members, showJoin = false }: CircleCardProp
           className={styles.progressBar}
           style={{ width: `${(members.length / circle.maxMembers) * 100}%` }}
           role="progressbar"
+          aria-label={`${members.length} of ${circle.maxMembers} members joined`}
           aria-valuenow={members.length}
           aria-valuemin={0}
           aria-valuemax={circle.maxMembers}

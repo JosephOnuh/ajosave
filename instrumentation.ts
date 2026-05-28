@@ -13,6 +13,10 @@ export async function register() {
         log: (msg) => console.log("[migrate]", msg),
       });
     }
+
+    // Initialize background services (Horizon stream, etc.)
+    const { initializeServices } = await import("./src/server/startup");
+    await initializeServices();
   }
   if (process.env.NEXT_RUNTIME === "edge") {
     await import("./sentry.edge.config");
