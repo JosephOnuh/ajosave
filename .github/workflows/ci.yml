@@ -158,9 +158,12 @@ jobs:
       - name: Run contract unit tests
         working-directory: contracts
         run: cargo test --lib
-      - name: Run Soroban integration tests
+      - name: Run Soroban integration tests (local sandbox)
+        # Uses soroban-sdk testutils in-process sandbox — no external node required.
+        # Covers: initialize → join → contribute → payout full lifecycle,
+        # multi-member (5-member) scenario, edge cases, and upgrade tests.
         working-directory: contracts
-        run: cargo test integration_tests
+        run: cargo test integration_tests -- --test-threads=4
 
   deploy-contract-testnet:
     name: Deploy Contract to Testnet

@@ -364,6 +364,53 @@ mod integration {
         assert_eq!(completed_before, completed_after, "completed flag should be unchanged after upgrade");
     }
 
+    /// Multi-member scenario: 5-member circle completes full rotation
+    #[test]
+    fn test_multi_member_five_members() {
+        let f = setup_fixture(5);
+        let Fixture { env, members, token, client, contribution, max_members, interval, .. } = &f;
+
+        // All 5 members join
+        for m in members.iter() {
+            client.join(m);
+        }
+
+        let (cycle, max, _, completed) = client.get_state();
+        assert_eq!(cycle, 1);
+        assert_eq!(max, 5);
+        assert!(!completed);
+        assert_eq!(client.get_members().len(), 5);
+
+        let mut timestamp: u64 = 0;
+        for cycle_num in 1..=*max_members {
+            timestamp += interval + 1;
+            env.ledger().with_mut(|l| l.timestamp = timestamp);
+
+            let recipient = members.get(cycle_num - 1).unwrap();
+            let before = token.balance(&recipient);
+            client.payout();
+            let after = token.balance(&recipient);
+
+            assert_eq!(
+                after - before,
+                contribution * (*max_members as i128),
+                "cycle {cycle_num}: 5-member pot should be 5× contribution"
+            );
+
+            if cycle_num < *max_members {
+                let (current, _, _, done) = client.get_state();
+                assert_eq!(current, cycle_num + 1);
+                assert!(!done);
+                for m in members.iter() {
+                    client.contribute(m);
+                }
+            }
+        }
+
+        let (_, _, _, completed) = client.get_state();
+        assert!(completed, "5-member circle should complete after 5 payouts");
+    }
+
     /// Pot distribution: each member ends up net-positive after receiving payout
     #[test]
     fn test_net_positive_for_all_members() {
