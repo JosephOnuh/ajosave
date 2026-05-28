@@ -190,3 +190,14 @@ jobs:
         run: npm run contract:deploy
       - name: Print contract ID
         run: cat .contract-id
+      - name: Verify deployed contract
+        env:
+          STELLAR_NETWORK: testnet
+          STELLAR_SERVER_SECRET_KEY: ${{ secrets.STELLAR_TESTNET_SECRET_KEY }}
+        run: npm run contract:verify
+      - name: Upload deploy artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-deploy-artifacts
+          path: deploy-artifacts/
+          retention-days: 30
