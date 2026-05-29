@@ -6,6 +6,7 @@ import {
 } from "./notification.service";
 import { getMissedContributions } from "./contribution.service";
 import type { Circle, Member } from "@/types";
+import { addPayoutJob } from "@/lib/queue/payoutQueue";
 
 /**
  * Send payout reminders 24 hours before scheduled payouts
@@ -185,6 +186,33 @@ export async function sendContributionReminders(): Promise<void> {
       } catch (error) {
         console.error(`Failed to send contribution reminders for circle ${circle.id}:`, error);
       }
+    }
+  }
+}
+
+/**
+ * Find circles with payouts due and enqueue payout jobs instead of processing inline.
+ * This keeps the cron handler lightweight and moves long-running work to background workers.
+ */
+export async function processDueCycles(): Promise<void> {
+  const { rows: circles } = await query<{ id: string; currentCycle: number }>(
+    `SELECT id, current_cycle as "currentCycle" FROM circles
+     WHERE status = 'active' AND next_payout_at IS NOT NULL AND next_payout_at <= NOW()`
+  );
+
+  for (const circle of circles) {
+    try {
+      // Skip if payout record already exists for this cycle
+      const { rows: existing } = await query(
+        `SELECT 1 FROM payouts WHERE circle_id = $1 AND cycle_number = $2 LIMIT 1`,
+        [circle.id, circle.currentCycle]
+      );
+      if (existing.length > 0) continue;
+
+      await addPayoutJob(circle.id, circle.currentCycle);
+      console.log(`[scheduler] Enqueued payout job for circle ${circle.id} cycle ${circle.currentCycle}`);
+    } catch (err) {
+      console.error(`[scheduler] Failed to enqueue payout for circle ${circle.id}:`, err);
     }
   }
 }
