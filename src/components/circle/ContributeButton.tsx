@@ -24,7 +24,7 @@ export function ContributeButton({ circleId, circleName, amountNgn, cycleFrequen
   const handleConfirm = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/circles/${circleId}/contribute`, { method: "POST" });
+      const res = await fetch(`/api/v1/circles/${circleId}/contribute`, { method: "POST" });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       toast("Redirecting to payment…", "info");

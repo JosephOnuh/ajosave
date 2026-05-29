@@ -21,6 +21,7 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [stellarPublicKey, setStellarPublicKey] = useState("");
   const [optimisticCount, setOptimisticCount] = useState(circle.memberCount ?? 0);
+  const [noSavedKey, setNoSavedKey] = useState(false);
 
   const { connectionState, publicKey, error: walletError, connect, disconnect } = useFreighterWallet();
 
@@ -58,7 +59,7 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
     setOptimisticCount((c) => c + 1);
 
     try {
-      const res = await fetch(`/api/circles/${circle.id}/join`, {
+      const res = await fetch(`/api/v1/circles/${circle.id}/join`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 

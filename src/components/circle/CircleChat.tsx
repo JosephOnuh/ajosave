@@ -20,7 +20,7 @@ const fetchMessages = async (
   limit: number,
   before?: string
 ): Promise<CircleMessage[]> => {
-  const url = `/api/circles/${circleId}/chat?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ""}`;
+  const url = `/api/v1/circles/${circleId}/chat?limit=${limit}${before ? `&before=${encodeURIComponent(before)}` : ""}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("Failed to load messages");
   const json = await res.json();
@@ -31,7 +31,7 @@ const sendMessage = async (
   circleId: string,
   content: string
 ): Promise<CircleMessage> => {
-  const res = await fetch(`/api/circles/${circleId}/chat`, {
+  const res = await fetch(`/api/v1/circles/${circleId}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
@@ -129,7 +129,7 @@ export function CircleChat({
       // Invalidate query so the next fetch picks up the new message
       queryClient.invalidateQueries({ queryKey: ["circle-chat", circleId] });
     },
-    onError: (err) => {
+    onError: (err: Error) => {
       setPostError(err.message || "Failed to send message");
     },
   });

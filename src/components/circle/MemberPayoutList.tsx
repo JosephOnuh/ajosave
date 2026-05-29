@@ -14,7 +14,7 @@ interface Props {
 
 export function MemberPayoutList({ circle, initialMembers, isCreator }: Props) {
   const [members, setMembers] = useState<Member[]>(
-    [...initialMembers].sort((a, b) => a.position - b.position)
+    [...initialMembers].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
   );
   const [shuffling, setShuffling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +23,7 @@ export function MemberPayoutList({ circle, initialMembers, isCreator }: Props) {
     setShuffling(true);
     setError(null);
     try {
-      const res = await fetch(`/api/circles/${circle.id}/shuffle`, { method: "POST" });
+      const res = await fetch(`/api/v1/circles/${circle.id}/shuffle`, { method: "POST" });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setMembers(json.data);

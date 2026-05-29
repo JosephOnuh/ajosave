@@ -16,7 +16,7 @@ function generateCode(): string {
   return randomBytes(4).toString("hex").toUpperCase(); // e.g. "A3F2B1C9"
 }
 
-/** GET /api/referral — return the current user's referral code and stats */
+/** GET /api/v1/referral — return the current user's referral code and stats */
 export const GET = withErrorHandler(async () => {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
@@ -63,7 +63,7 @@ export const GET = withErrorHandler(async () => {
   });
 });
 
-/** POST /api/referral — apply a referral code (one-time, before first contribution) */
+/** POST /api/v1/referral — apply a referral code (one-time, before first contribution) */
 export const POST = withErrorHandler(async (req: NextRequest) => {
   const session = await getServerSession(authOptions);
   if (!session?.user) {

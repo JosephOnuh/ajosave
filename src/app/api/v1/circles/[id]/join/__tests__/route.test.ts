@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { POST } from "@/app/api/circles/[id]/join/route";
+import { POST } from "@/app/api/v1/circles/[id]/join/route";
 import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth";
 import { getCircleById, joinCircle } from "@/server/services/circle.service";
@@ -21,7 +21,7 @@ const mockJoinCircle = joinCircle as jest.MockedFunction<typeof joinCircle>;
 const mockVerifyToken = verifyInviteToken as jest.MockedFunction<typeof verifyInviteToken>;
 
 const USER_ID = "user-1";
-const CIRCLE_ID = "circle-1";
+const CIRCLE_ID = "123e4567-e89b-12d3-a456-426614174000";
 
 describe("POST /api/circles/[id]/join", () => {
   beforeEach(() => {

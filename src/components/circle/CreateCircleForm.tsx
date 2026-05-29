@@ -24,7 +24,7 @@ function useUsdcPreview(amount: number | undefined, currency: string) {
 
   useEffect(() => {
     if (!rates[currency]) {
-      fetch(`/api/fx/rate?currency=${currency}`)
+      fetch(`/api/v1/fx/rate?currency=${currency}`)
         .then((r) => r.json())
         .then((json) => {
           if (json.success) {
@@ -76,7 +76,7 @@ export function CreateCircleForm() {
   const onSubmit = async (data: CreateCircleInput) => {
     setError(null);
     try {
-      const res = await fetch("/api/circles", {
+      const res = await fetch("/api/v1/circles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),

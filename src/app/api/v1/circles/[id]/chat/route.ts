@@ -7,7 +7,7 @@ import { getMessages, postMessage } from "@/server/services/chat.service";
 import { broadcastChatMessage } from "@/server/websocket";
 import type { ApiResponse, CircleMessage } from "@/types";
 
-// ─── GET /api/circles/[id]/chat ───────────────────────────────────────────────
+// ─── GET /api/v1/circles/[id]/chat ───────────────────────────────────────────────
 
 export const GET = withErrorHandler(async (req: NextRequest, ctx: unknown) => {
   const session = await getServerSession(authOptions);
@@ -71,7 +71,7 @@ export const GET = withErrorHandler(async (req: NextRequest, ctx: unknown) => {
   );
 });
 
-// ─── POST /api/circles/[id]/chat ──────────────────────────────────────────────
+// ─── POST /api/v1/circles/[id]/chat ──────────────────────────────────────────────
 
 export const POST = withErrorHandler(
   withRateLimit(

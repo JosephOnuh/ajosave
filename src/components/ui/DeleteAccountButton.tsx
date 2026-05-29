@@ -14,7 +14,7 @@ export function DeleteAccountButton() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/users/me", { method: "DELETE" });
+      const res = await fetch("/api/v1/users/me", { method: "DELETE" });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       await signOut({ callbackUrl: "/" });

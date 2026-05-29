@@ -1,4 +1,5 @@
 import { SupportedCurrency } from "@/lib/currency";
+export type { SupportedCurrency };
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 export type UserRole = "user" | "admin";
@@ -82,6 +83,32 @@ export interface Payout {
   amountUsdc: string;
   txHash: string;
   paidAt: Date;
+}
+
+export interface PayoutHistoryRow {
+  id: string;
+  cycleNumber: number;
+  amountUsdc: string;
+  txHash: string;
+  paidAt: string;
+  recipientName: string;
+}
+
+// ─── Dispute ──────────────────────────────────────────────────────────────────
+export type DisputeStatus = "open" | "resolved" | "rejected";
+
+export interface Dispute {
+  id: string;
+  contributionId: string;
+  memberId: string;
+  circleId: string;
+  paystackReference?: string | null;
+  reason: string;
+  status: DisputeStatus;
+  resolutionNotes?: string | null;
+  resolvedBy?: string | null;
+  createdAt: Date;
+  resolvedAt?: Date | null;
 }
 
 // ─── Circle Chat ──────────────────────────────────────────────────────────────

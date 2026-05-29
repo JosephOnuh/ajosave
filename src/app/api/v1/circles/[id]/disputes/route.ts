@@ -32,7 +32,8 @@ export const GET = withErrorHandler(async (_req: NextRequest, ctx: unknown) => {
 
 export const POST = withErrorHandler(async (req: NextRequest, ctx: unknown) => {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const user = session?.user as { id: string } | undefined;
+  if (!user?.id) {
     return NextResponse.json<ApiResponse<never>>(
       { success: false, error: "Unauthorized" },
       { status: 401 }

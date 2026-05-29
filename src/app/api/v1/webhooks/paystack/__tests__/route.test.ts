@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { POST } from "@/app/api/webhooks/paystack/route";
+import { POST } from "@/app/api/v1/webhooks/paystack/route";
 import { NextRequest } from "next/server";
 import { createHmac } from "crypto";
 

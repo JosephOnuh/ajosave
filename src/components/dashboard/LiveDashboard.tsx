@@ -18,7 +18,7 @@ export function LiveDashboard({ initialCircles }: LiveDashboardProps) {
   const [newCirclesCount, setNewCirclesCount] = useState(0);
 
   const fetchCircles = useCallback(async () => {
-    const res = await fetch("/api/circles?filter=mine");
+    const res = await fetch("/api/v1/circles?filter=mine");
     const json = await res.json();
     if (!json.success) throw new Error(json.error);
     return json.data as Circle[];

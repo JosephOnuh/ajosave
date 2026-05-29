@@ -10,7 +10,8 @@ export async function GET(
 ): Promise<NextResponse<ApiResponse<Member[]>>> {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const user = session?.user as { id: string } | undefined;
+    if (!user?.id) {
       return NextResponse.json(
         { success: false, error: "Unauthorized" },
         { status: 401 }
@@ -28,7 +29,7 @@ export async function GET(
     }
 
     // Only circle creator can view pending requests
-    if (circle.creatorId !== session.user.id) {
+    if (circle.creatorId !== user.id) {
       return NextResponse.json(
         { success: false, error: "Only the circle creator can view pending requests" },
         { status: 403 }

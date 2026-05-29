@@ -15,7 +15,22 @@ describe("CreateCircleForm", () => {
 
   beforeEach(() => {
     (useRouter as jest.Mock).mockReturnValue({ push: mockPush });
-    (global.fetch as jest.Mock).mockClear();
+    (global.fetch as jest.Mock).mockReset();
+    
+    // Default implementation to handle background FX rate queries smoothly
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes("/fx/rate")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: { rate: 1500, fetchedAt: new Date().toISOString() } }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true, data: { id: "new-circle-id" } }),
+      });
+    });
+
     mockPush.mockClear();
   });
 
@@ -30,11 +45,6 @@ describe("CreateCircleForm", () => {
   });
 
   it("calls API with correct payload on valid submission", async () => {
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ success: true, data: { id: "new-circle-id" } }),
-    });
-
     render(<CreateCircleForm />);
 
     // Fill the form
@@ -46,14 +56,17 @@ describe("CreateCircleForm", () => {
     fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith("/api/circles", expect.objectContaining({
+      expect(global.fetch).toHaveBeenCalledWith("/api/v1/circles", expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }));
     });
 
-    // Check payload (assuming field name mapping or that it matches the form)
-    const callBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    // Check payload
+    const calls = (global.fetch as jest.Mock).mock.calls;
+    const circleCall = calls.find(c => c[0].includes("/api/v1/circles"));
+    expect(circleCall).toBeDefined();
+    const callBody = JSON.parse(circleCall[1].body);
     expect(callBody.name).toBe("Lagos Monthly");
     
     // Check redirection
@@ -67,7 +80,19 @@ describe("CreateCircleForm", () => {
     const fetchPromise = new Promise((resolve) => {
       resolveFetch = resolve;
     });
-    (global.fetch as jest.Mock).mockReturnValueOnce(fetchPromise);
+
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes("/fx/rate")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: { rate: 1500, fetchedAt: new Date().toISOString() } }),
+        });
+      }
+      if (url.includes("/circles")) {
+        return fetchPromise;
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ success: true }) });
+    });
 
     render(<CreateCircleForm />);
 
@@ -78,9 +103,8 @@ describe("CreateCircleForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /create circle/i }));
 
     // Button should be in loading state (disabled and showing loading text)
-    const submitButton = screen.getByRole("button");
+    const submitButton = screen.getByRole("button", { name: /loading/i });
     expect(submitButton).toBeDisabled();
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
 
     // Resolve the promise
     await waitFor(() => {
@@ -92,9 +116,20 @@ describe("CreateCircleForm", () => {
   });
 
   it("shows error message on API failure", async () => {
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: false,
-      json: async () => ({ success: false, error: "Failed to create circle" }),
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes("/fx/rate")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true, data: { rate: 1500 } }),
+        });
+      }
+      if (url.includes("/circles")) {
+        return Promise.resolve({
+          ok: false,
+          json: async () => ({ success: false, error: "Failed to create circle" }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ success: true }) });
     });
 
     render(<CreateCircleForm />);

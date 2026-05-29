@@ -23,7 +23,7 @@ export function CircleActions({ circleId, isCreator, isMember, status }: Props) 
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/circles/${circleId}/invite`);
+      const res = await fetch(`/api/v1/circles/${circleId}/invite`);
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
 
@@ -41,7 +41,7 @@ export function CircleActions({ circleId, isCreator, isMember, status }: Props) 
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/circles/${circleId}/cancel`, { method: "POST" });
+      const res = await fetch(`/api/v1/circles/${circleId}/cancel`, { method: "POST" });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       router.refresh();
@@ -57,7 +57,7 @@ export function CircleActions({ circleId, isCreator, isMember, status }: Props) 
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/circles/${circleId}/leave`, { method: "POST" });
+      const res = await fetch(`/api/v1/circles/${circleId}/leave`, { method: "POST" });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       router.push("/circles");
@@ -79,7 +79,7 @@ export function CircleActions({ circleId, isCreator, isMember, status }: Props) 
       <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "center" }}>
         {isCreator && status === "open" && (
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             onClick={handleCopyInvite}
             disabled={loading}

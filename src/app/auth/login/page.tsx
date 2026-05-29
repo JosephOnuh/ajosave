@@ -50,7 +50,7 @@ export default function LoginPage() {
   const sendOtp = async () => {
     setLoading(true); setError(null);
     try {
-      const res = await fetch("/api/auth/send-otp", {
+      const res = await fetch("/api/v1/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: fullPhone }),

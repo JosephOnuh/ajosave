@@ -17,6 +17,7 @@ export const POST = withErrorHandler(async (req: NextRequest, ctx: unknown) => {
     );
   }
 
+  const userId = (session.user as { id: string }).id;
   const { params } = ctx as { params: { id: string } };
   const body = await req.json();
   const parsed = joinCircleSchema.safeParse({ ...body, circleId: params.id });
@@ -74,7 +75,6 @@ export const POST = withErrorHandler(async (req: NextRequest, ctx: unknown) => {
     }
   }
 
-  const userId = (session.user as { id: string }).id;
   const member = await joinCircle(params.id, userId, isInvited);
   return NextResponse.json<ApiResponse<Member>>({ success: true, data: member }, { status: 201 });
 });

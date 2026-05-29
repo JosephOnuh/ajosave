@@ -17,7 +17,7 @@ export default function SettingsPage() {
     setMessage(null);
 
     try {
-      const res = await fetch("/api/user/sms-preferences", {
+      const res = await fetch("/api/v1/user/sms-preferences", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: !smsEnabled }),
@@ -111,7 +111,7 @@ export default function SettingsPage() {
           <div className={styles.infoGrid}>
             <div className={styles.infoItem}>
               <span className={styles.infoLabel}>Phone</span>
-              <span className={styles.infoValue}>{session.user?.phone || "Not set"}</span>
+              <span className={styles.infoValue}>{(session.user as { phone?: string })?.phone || "Not set"}</span>
             </div>
             <div className={styles.infoItem}>
               <span className={styles.infoLabel}>Display Name</span>

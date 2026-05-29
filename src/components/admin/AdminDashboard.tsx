@@ -22,7 +22,7 @@ export function AdminDashboard() {
 
   // Fetch function for circles
   const fetchCircles = useCallback(async () => {
-    const res = await fetch("/api/admin/circles");
+    const res = await fetch("/api/v1/admin/circles");
     const json = await res.json();
     if (!json.success) throw new Error(json.error);
     return json.data as AdminCircleRow[];
@@ -30,7 +30,7 @@ export function AdminDashboard() {
 
   // Fetch function for payouts
   const fetchPayouts = useCallback(async () => {
-    const res = await fetch("/api/admin/payouts");
+    const res = await fetch("/api/v1/admin/payouts");
     const json = await res.json();
     if (!json.success) throw new Error(json.error);
     return json.data as AdminPayoutRow[];

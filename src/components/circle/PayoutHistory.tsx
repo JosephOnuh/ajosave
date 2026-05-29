@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { PayoutHistoryRow } from "@/app/api/circles/[id]/payouts/route";
+import type { PayoutHistoryRow } from "@/types";
 import { format } from "date-fns";
 import styles from "./PayoutHistory.module.css";
 
@@ -16,7 +16,7 @@ export function PayoutHistory({ circleId }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/circles/${circleId}/payouts`)
+    fetch(`/api/v1/circles/${circleId}/payouts`)
       .then((r) => r.json())
       .then((json) => {
         if (json.success) setPayouts(json.data);

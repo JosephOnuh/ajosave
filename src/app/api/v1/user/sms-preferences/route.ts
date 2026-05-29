@@ -8,7 +8,8 @@ import type { ApiResponse } from "@/types";
 export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<{ enabled: boolean }>>> {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const user = session?.user as { id: string } | undefined;
+    if (!user?.id) {
       return NextResponse.json(
         { success: false, error: "Unauthorized" },
         { status: 401 }
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<{
     }
 
     const { enabled } = parsed.data;
-    await toggleSmsNotifications(session.user.id, enabled);
+    await toggleSmsNotifications(user.id, enabled);
 
     return NextResponse.json({ 
       success: true, 

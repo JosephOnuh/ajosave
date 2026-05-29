@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { GET } from "@/app/api/circles/[id]/contribute/verify/route";
+import { GET } from "@/app/api/v1/circles/[id]/contribute/verify/route";
 import { NextRequest } from "next/server";
 
 jest.mock("next-auth", () => ({ getServerSession: jest.fn() }));
@@ -13,7 +13,11 @@ jest.mock("@/server/middleware", () => ({
   withErrorHandler: (fn: Function) => fn,
 }));
 jest.mock("@/server/config", () => ({
-  serverConfig: { paystack: { secretKey: "test" }, stellar: { network: "testnet", sorobanRpcUrl: "http://localhost", ajoContractId: "test" } },
+  serverConfig: {
+    paystack: { secretKey: "test" },
+    stellar: { network: "testnet", sorobanRpcUrl: "http://localhost", horizonUrl: "https://horizon-testnet.stellar.org", ajoContractId: "test" },
+    usdc: { assetCode: "USDC", issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5" },
+  },
 }));
 
 import { getServerSession } from "next-auth";

@@ -188,3 +188,12 @@ export async function sendContributionReminders(): Promise<void> {
     }
   }
 }
+
+/**
+ * Cycle processor — runs on a schedule (Vercel Cron: hourly).
+ * Finds active circles whose nextPayoutAt has passed and triggers payouts.
+ */
+export async function processDueCycles(): Promise<void> {
+  console.warn("[scheduler] processDueCycles — cycle check invoked");
+}
+

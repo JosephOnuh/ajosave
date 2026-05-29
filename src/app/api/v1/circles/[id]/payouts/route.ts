@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { withErrorHandler } from "@/server/middleware";
-import type { ApiResponse } from "@/types";
+import type { ApiResponse, PayoutHistoryRow } from "@/types";
 
-export interface PayoutHistoryRow {
-  id: string;
-  cycleNumber: number;
-  amountUsdc: string;
-  txHash: string;
-  paidAt: string;
-  recipientName: string;
-}
+export type { PayoutHistoryRow };
 
 export const GET = withErrorHandler(async (
   _req: NextRequest,

@@ -11,7 +11,8 @@ export async function POST(
 ): Promise<NextResponse<ApiResponse<Member>>> {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const user = session?.user as { id: string } | undefined;
+    if (!user?.id) {
       return NextResponse.json(
         { success: false, error: "Unauthorized" },
         { status: 401 }
@@ -19,7 +20,7 @@ export async function POST(
     }
 
     const { id: circleId, memberId } = params;
-    const member = await rejectJoinRequest(circleId, memberId, session.user.id);
+    const member = await rejectJoinRequest(circleId, memberId, user.id);
 
     // TODO: Send SMS notification to rejected user
     // await sendSms(member.userId, "Your join request has been declined.");

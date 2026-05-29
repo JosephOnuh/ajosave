@@ -26,7 +26,7 @@ export function CirclesTable({ circles }: CirclesTableProps) {
     setPayoutSuccess(null);
 
     try {
-      const res = await fetch(`/api/admin/circles/${circleId}/payout`, { method: "POST" });
+      const res = await fetch(`/api/v1/admin/circles/${circleId}/payout`, { method: "POST" });
       const json = await res.json();
 
       if (!json.success) throw new Error(json.error);

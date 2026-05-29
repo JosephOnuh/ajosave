@@ -16,7 +16,7 @@ export default function ContributeCallbackPage() {
 
   useEffect(() => {
     if (!reference) { setStatus("failed"); return; }
-    fetch(`/api/circles/${params.id}/contribute/verify?reference=${reference}`)
+    fetch(`/api/v1/circles/${params.id}/contribute/verify?reference=${reference}`)
       .then((r) => r.json())
       .then((json) => {
         setStatus(json.success && json.data.status === "success" ? "success" : "failed");

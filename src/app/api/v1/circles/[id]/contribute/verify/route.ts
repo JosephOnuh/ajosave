@@ -21,15 +21,16 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
   // Send SMS confirmation if payment was successful
   if (result.status === "success") {
     const session = await getServerSession(authOptions);
+    const user = session?.user as { id: string } | undefined;
     const circleId = req.nextUrl.searchParams.get("circleId");
     const cycleNumber = req.nextUrl.searchParams.get("cycleNumber");
     
-    if (session?.user?.id && circleId && cycleNumber) {
+    if (user?.id && circleId && cycleNumber) {
       const circle = await getCircleById(circleId);
       if (circle) {
         // Send notification (async, don't block)
         notifyContributionReceived(
-          session.user.id,
+          user.id,
           circle.name,
           circle.contributionUsdc,
           parseInt(cycleNumber)

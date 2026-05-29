@@ -1,6 +1,6 @@
 import { query } from "@/lib/db";
 import type { Metadata } from "next";
-import type { PlatformStats } from "@/app/api/analytics/route";
+import type { PlatformStats } from "@/app/api/v1/analytics/route";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {

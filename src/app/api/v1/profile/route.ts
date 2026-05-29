@@ -31,7 +31,8 @@ export type ProfileData = {
 
 export async function GET(): Promise<NextResponse<ApiResponse<ProfileData>>> {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const user = session?.user as { id: string } | undefined;
+  if (!user?.id) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -56,7 +57,7 @@ export async function GET(): Promise<NextResponse<ApiResponse<ProfileData>>> {
      LEFT JOIN contributions c ON c.member_id = m.id
      WHERE u.id = $1
      GROUP BY u.id`,
-    [session.user.id]
+    [user.id]
   );
 
   if (!rows[0]) {
@@ -86,7 +87,8 @@ export async function PATCH(
   req: NextRequest
 ): Promise<NextResponse<ApiResponse<{ updated: true }>>> {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const user = session?.user as { id: string } | undefined;
+  if (!user?.id) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -111,7 +113,7 @@ export async function PATCH(
       displayName ?? null,
       email !== undefined ? (email === "" ? null : email) : null,
       stellarPublicKey !== undefined ? (stellarPublicKey === "" ? null : stellarPublicKey) : null,
-      session.user.id,
+      user.id,
     ]
   );
 

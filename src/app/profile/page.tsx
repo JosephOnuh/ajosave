@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 import type { ProfileData } from "@/app/api/v1/profile/route";
-import type { ReferralData } from "@/app/api/referral/route";
+import type { ReferralData } from "@/app/api/v1/referral/route";
 import { useFreighterWallet } from "@/hooks/useFreighterWallet";
 import { ConnectWalletButton } from "@/components/wallet/ConnectWalletButton";
 
@@ -45,7 +45,7 @@ export default function ProfilePage() {
           });
         }
       });
-    fetch("/api/referral")
+    fetch("/api/v1/referral")
       .then((r) => r.json())
       .then((json) => { if (json.success) setReferral(json.data); });
   }, [status]);
@@ -62,7 +62,7 @@ export default function ProfilePage() {
   useEffect(() => {
     const key = profile?.stellarPublicKey;
     if (!key) { setUsdcBalance(null); return; }
-    fetch(`/api/stellar/balance?publicKey=${encodeURIComponent(key)}`)
+    fetch(`/api/v1/stellar/balance?publicKey=${encodeURIComponent(key)}`)
       .then((r) => r.json())
       .then((json) => { if (json.success) setUsdcBalance(json.data.balance); })
       .catch(() => {});
@@ -81,7 +81,7 @@ export default function ProfilePage() {
     setApplyingCode(true);
     setReferralMsg(null);
     try {
-      const res = await fetch("/api/referral", {
+      const res = await fetch("/api/v1/referral", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: referralCode }),

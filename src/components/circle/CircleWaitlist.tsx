@@ -30,7 +30,7 @@ export function CircleWaitlist({
     setError(null);
     setSuccess(null);
     try {
-      const res = await fetch(`/api/circles/${circleId}/waitlist`, {
+      const res = await fetch(`/api/v1/circles/${circleId}/waitlist`, {
         method: "POST",
       });
       const json = await res.json();
@@ -52,7 +52,7 @@ export function CircleWaitlist({
     setError(null);
     setSuccess(null);
     try {
-      const res = await fetch(`/api/circles/${circleId}/waitlist`, {
+      const res = await fetch(`/api/v1/circles/${circleId}/waitlist`, {
         method: "DELETE",
       });
       const json = await res.json();

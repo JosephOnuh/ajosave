@@ -30,9 +30,9 @@ Today this runs entirely on trust — no contracts, no guarantees, frequent frau
 │                        Next.js App                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
 │  │  Public Pages│  │  API Routes  │  │  Server Services │  │
-│  │  /circles    │  │  /api/circles│  │  circle.service  │  │
-│  │  /dashboard  │  │  /api/auth   │  │  payout.service  │  │
-│  │  /auth/login │  │  /api/cron   │  │  scheduler       │  │
+│  │  /circles    │  │/api/v1/circle│  │  circle.service  │  │
+│  │  /dashboard  │  │/api/auth     │  │  payout.service  │  │
+│  │  /auth/login │  │/api/v1/cron  │  │  scheduler       │  │
 │  └──────────────┘  └──────────────┘  └──────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
          │                    │                    │
@@ -73,11 +73,13 @@ src/
 │   ├── dashboard/                # User's circles
 │   ├── auth/login/               # Phone OTP login
 │   └── api/
-│       ├── circles/              # Circle CRUD + join
-│       ├── auth/                 # OTP + NextAuth
-│       └── cron/cycle/           # Payout scheduler
+│       ├── auth/                 # NextAuth route handlers (exempt from v1 prefix)
+│       └── v1/                   # Versioned API routes (/api/v1/)
+│           ├── circles/          # Circle CRUD + join + waitlist
+│           ├── auth/             # OTP v1 routes
+│           └── cron/cycle/       # Payout scheduler
 ├── server/
-│   ├── services/                 # circle, payout, scheduler
+│   ├── services/                 # circle, payout, scheduler, waitlist
 │   ├── middleware/               # Auth, rate limiting
 │   └── config/
 ├── components/
@@ -92,6 +94,21 @@ contracts/
 scripts/
 └── deploy-contract.ts
 ```
+
+---
+
+## API Versioning
+
+All API endpoints are strictly versioned under the `/api/v1/` path to ensure backward compatibility and smooth future integrations.
+
+### Standard Redirection & Deprecation
+- **Dynamic Redirects**: Any unversioned legacy request directed at `/api/*` is dynamically intercepted by the Next.js middleware and redirected to `/api/v1/*` automatically.
+  - **GET requests**: Responds with `301 Moved Permanently`.
+  - **Non-GET requests** (POST, PUT, DELETE, PATCH): Responds with `308 Permanent Redirect` to safely preserve the request body and HTTP method.
+- **Deprecation Headers**: Legacy redirected responses automatically append:
+  - `X-API-Deprecated: true`
+  - `X-API-Deprecation-Info: This endpoint is deprecated. Use /api/v1/{endpoint} instead.`
+- **Exceptions**: Authentication endpoints (`/api/auth/*` for NextAuth) are explicitly excluded from redirection to ensure login flows remain uninterrupted.
 
 ---
 
