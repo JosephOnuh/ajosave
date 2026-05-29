@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import type { Circle } from "@/types";
 import { CircleCard } from "@/components/circle/CircleCard";
 import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { usePolling } from "@/hooks/usePolling";
 import Link from "next/link";
 import styles from "./LiveDashboard.module.css";
@@ -59,12 +60,15 @@ export function LiveDashboard({ initialCircles }: LiveDashboardProps) {
       )}
 
       {circles.length === 0 ? (
-        <div className={styles.empty}>
-          <p>You haven&apos;t joined any circles yet.</p>
-          <Link href="/circles" className="btn btn--primary">
-            Browse open circles
-          </Link>
-        </div>
+        <EmptyState
+          illustration="circles"
+          title="Start your savings journey"
+          description="You haven't joined any circles yet. Create your own or browse open circles to get started."
+          ctas={[
+            { label: "Create your first circle", href: "/circles/create", variant: "primary" },
+            { label: "Browse circles", href: "/circles", variant: "secondary" },
+          ]}
+        />
       ) : (
         <div className={styles.grid}>
           {circles.map((circle) => (

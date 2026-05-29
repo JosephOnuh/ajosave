@@ -5,11 +5,12 @@ import type { AdminCircleRow } from "@/server/services/admin.service";
 import type { AdminPayoutRow } from "@/server/services/admin.service";
 import { CirclesTable } from "./CirclesTable";
 import { PayoutsTable } from "./PayoutsTable";
+import { AnalyticsDashboard } from "./AnalyticsDashboard";
 import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
 import { usePolling } from "@/hooks/usePolling";
 import styles from "../admin.module.css";
 
-type Tab = "circles" | "payouts";
+type Tab = "circles" | "payouts" | "analytics";
 
 export function AdminDashboard() {
   const [tab, setTab] = useState<Tab>("circles");
@@ -88,8 +89,8 @@ export function AdminDashboard() {
     },
   });
 
-  const isConnected = tab === "circles" ? circlesConnected : payoutsConnected;
-  const currentError = tab === "circles" ? circlesError : payoutsError;
+  const isConnected = tab === "circles" ? circlesConnected : tab === "payouts" ? payoutsConnected : true;
+  const currentError = tab === "circles" ? circlesError : tab === "payouts" ? payoutsError : null;
 
   useEffect(() => {
     if (currentError) {
@@ -123,6 +124,13 @@ export function AdminDashboard() {
           >
             Payouts ({payouts.length})
           </button>
+          <button
+            className={styles.tab}
+            aria-selected={tab === "analytics"}
+            onClick={() => setTab("analytics")}
+          >
+            Performance & Analytics
+          </button>
         </div>
         <ConnectionStatus isConnected={isConnected} lastUpdate={lastUpdate || undefined} />
       </div>
@@ -136,8 +144,10 @@ export function AdminDashboard() {
 
       {error && <div className={styles.error} role="alert">{error}</div>}
 
-      {loading ? (
-        <div className={styles.loading} aria-busy="true" aria-label="Loading data">Loading…</div>
+      {tab === "analytics" ? (
+        <AnalyticsDashboard />
+      ) : loading ? (
+        <div className={styles.loading}>Loading…</div>
       ) : tab === "circles" ? (
         <div id="tab-panel-circles" role="tabpanel" aria-labelledby="tab-circles">
           <CirclesTable circles={circles} />

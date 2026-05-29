@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/Button";
+import { DeleteAccountButton } from "@/components/ui/DeleteAccountButton";
 import styles from "./page.module.css";
 
 export default function SettingsPage() {
@@ -120,6 +121,14 @@ export default function SettingsPage() {
               <span className={styles.infoLabel}>Display Name</span>
               <span className={styles.infoValue}>{session.user?.name || "Not set"}</span>
             </div>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>Danger Zone</h2>
+          <p className={styles.settingDesc}>Permanently delete your account and all data.</p>
+          <div style={{ marginTop: "var(--space-4)" }}>
+            <DeleteAccountButton />
           </div>
         </section>
       </div>
