@@ -15,7 +15,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     notNull: true,
     default: "pending",
     check: "status IN ('pending','confirmed','missed','refund_pending','refunded')",
-  });
+  } as any);
 
   // Add updated_at to contributions if not already present
   pgm.addColumn("contributions", {
@@ -35,5 +35,5 @@ export async function down(pgm: MigrationBuilder): Promise<void> {
     notNull: true,
     default: "pending",
     check: "status IN ('pending','confirmed','missed','refund_pending')",
-  });
+  } as any);
 }

@@ -36,15 +36,16 @@ export async function sendPayoutReminders(): Promise<void> {
       const recipient = members[0];
       if (!recipient) continue;
 
-      const totalPot = (
-        parseFloat(circle.contributionUsdc) *
-          (
-            await query<Member>(
-              "SELECT COUNT(*) as count FROM members WHERE circle_id = $1 AND status = 'active'",
-              [circle.id]
-            )
-          ).rows[0]?.count || 0
-      ).toFixed(7);
+      const activeCount = Number(
+        (
+          await query<{ count: string | number }>(
+            "SELECT COUNT(*) as count FROM members WHERE circle_id = $1 AND status = 'active'",
+            [circle.id]
+          )
+        ).rows[0]?.count ?? 0
+      );
+
+      const totalPot = (parseFloat(circle.contributionUsdc) * activeCount).toFixed(7);
 
       // Send reminder to recipient
       await notifyPayoutReminder(recipient.userId, circle.name, totalPot, 24);

@@ -1,3 +1,6 @@
+/**
+ * @jest-environment node
+ */
 import { GET } from "../route";
 import { NextRequest } from "next/server";
 import * as schedulerService from "@/server/services/scheduler.service";

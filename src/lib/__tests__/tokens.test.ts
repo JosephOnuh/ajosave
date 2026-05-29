@@ -1,3 +1,6 @@
+/**
+ * @jest-environment node
+ */
 import { createInviteToken, verifyInviteToken } from "@/lib/tokens";
 
 // Mock serverConfig to avoid issues with env vars in tests

@@ -6,11 +6,10 @@
 import { horizonServer, USDC } from "@/lib/stellar";
 import { serverConfig } from "@/server/config";
 import { query } from "@/lib/db";
-import { Keypair } from "@stellar/stellar-sdk";
-import type { ServerApi } from "@stellar/stellar-sdk/lib/horizon";
+import { Keypair, Horizon } from "@stellar/stellar-sdk";
 
 interface PaymentHandler {
-  (payment: ServerApi.PaymentOperationRecord): Promise<void>;
+  (payment: Horizon.ServerApi.PaymentOperationRecord): Promise<void>;
 }
 
 let streamCloser: (() => void) | null = null;
@@ -36,12 +35,12 @@ export async function startHorizonStream(onPayment?: PaymentHandler): Promise<vo
     .forAccount(platformAccount)
     .cursor("now") // Start from current ledger
     .stream({
-      onmessage: async (payment) => {
+      onmessage: async (payment: any) => {
         try {
           // Only process payment operations (not path payments or other types)
           if (payment.type !== "payment") return;
 
-          const paymentOp = payment as ServerApi.PaymentOperationRecord;
+          const paymentOp = payment as Horizon.ServerApi.PaymentOperationRecord;
 
           // Only process USDC payments
           if (
@@ -101,7 +100,7 @@ export function stopHorizonStream(): void {
  * Auto-confirm a contribution when matching USDC payment is received
  * Matches based on amount and timing
  */
-async function autoConfirmContribution(payment: ServerApi.PaymentOperationRecord): Promise<void> {
+async function autoConfirmContribution(payment: Horizon.ServerApi.PaymentOperationRecord): Promise<void> {
   const amountUsdc = payment.amount;
   const txHash = payment.transaction_hash;
   const senderAddress = payment.from;

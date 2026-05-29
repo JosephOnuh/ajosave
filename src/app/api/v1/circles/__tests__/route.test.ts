@@ -11,6 +11,7 @@ jest.mock("@/lib/auth", () => ({ authOptions: {} }));
 jest.mock("@/server/services/circle.service");
 jest.mock("@/server/middleware", () => ({
   withErrorHandler: (fn: Function) => fn,
+  withRateLimit: (fn: Function) => fn,
 }));
 
 const mockSession = getServerSession as jest.MockedFunction<typeof getServerSession>;

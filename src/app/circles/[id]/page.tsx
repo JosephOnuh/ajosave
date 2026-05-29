@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import type { Metadata } from "next";
 import { CircleChat } from "@/components/circle/CircleChat";
 import { CircleWaitlist } from "@/components/circle/CircleWaitlist";
+import { CopyButton } from "@/components/ui/CopyButton";
 import styles from "./page.module.css";
 
 interface Props {

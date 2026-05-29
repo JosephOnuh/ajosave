@@ -1,3 +1,6 @@
+/**
+ * @jest-environment node
+ */
 import { verifyCronSecret } from "@/lib/cron-auth";
 import { serverConfig } from "@/server/config";
 import { NextRequest } from "next/server";

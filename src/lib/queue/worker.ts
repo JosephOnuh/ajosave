@@ -1,16 +1,19 @@
-import { Worker, QueueScheduler } from "bullmq";
+import { Worker, QueueScheduler, Job } from "bullmq";
+import IORedis from "ioredis";
 import { serverConfig } from "@/server/config";
 import { processCyclePayout } from "@/server/services/payout.service";
 import { query } from "@/lib/db";
 
-const connection = { connection: { url: serverConfig.redis.url } };
+const connection = new IORedis(serverConfig.redis.url, {
+  maxRetriesPerRequest: null,
+});
 
 // Ensure stalled jobs are reprocessed and repeatable jobs work correctly
-new QueueScheduler("payouts", connection);
+new QueueScheduler("payouts", { connection });
 
 const worker = new Worker(
   "payouts",
-  async (job) => {
+  async (job: Job) => {
     const { circleId, cycleNumber } = job.data as { circleId: string; cycleNumber: number };
     console.log(`[payout-worker] Starting job ${job.id} for ${circleId}:${cycleNumber}`);
 
@@ -36,15 +39,15 @@ const worker = new Worker(
   { connection, concurrency: 1 }
 );
 
-worker.on("active", (job) => {
+worker.on("active", (job: Job) => {
   console.log(`[payout-worker] Job ${job.id} is active for ${job.data.circleId}:${job.data.cycleNumber}`);
 });
 
-worker.on("completed", (job) => {
+worker.on("completed", (job: Job) => {
   console.log(`[payout-worker] Job ${job.id} completed for ${job.data.circleId}:${job.data.cycleNumber}`);
 });
 
-worker.on("failed", (job, err) => {
+worker.on("failed", (job: Job | undefined, err: Error) => {
   console.error(`[payout-worker] Job ${job?.id} failed for ${job?.data?.circleId}:${job?.data?.cycleNumber}`, err);
 });
 

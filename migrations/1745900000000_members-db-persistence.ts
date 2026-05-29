@@ -15,7 +15,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     notNull: true,
     default: "pending",
     check: "status IN ('pending','confirmed','missed','refund_pending')",
-  });
+  } as any);
 
   // Add authorization_url column if not already present (used by Paystack flow)
   pgm.addColumn("contributions", {
@@ -43,5 +43,5 @@ export async function down(pgm: MigrationBuilder): Promise<void> {
     notNull: true,
     default: "pending",
     check: "status IN ('pending','confirmed','missed')",
-  });
+  } as any);
 }

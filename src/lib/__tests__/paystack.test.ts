@@ -58,6 +58,7 @@ describe("initializePayment", () => {
     expect(result).toEqual({
       authorizationUrl: "https://paystack.com/pay/abc123",
       reference: params.reference,
+      platformFee: 2500,
     });
   });
 

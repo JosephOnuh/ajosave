@@ -24,14 +24,14 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     notNull: true,
     default: "pending",
     check: "status IN ('pending', 'active', 'rejected', 'defaulted', 'completed')",
-  });
+  } as any);
 
   // Make position nullable for pending members
   pgm.alterColumn("members", "position", {
     type: "integer",
     notNull: false,
     check: "position > 0",
-  });
+  } as any);
 
   // Add reviewed_at column to track when creator approved/rejected
   pgm.addColumn("members", {
@@ -51,7 +51,7 @@ export async function down(pgm: MigrationBuilder): Promise<void> {
     type: "integer",
     notNull: true,
     check: "position > 0",
-  });
+  } as any);
 
   // Revert members status check
   pgm.alterColumn("members", "status", {
@@ -59,7 +59,7 @@ export async function down(pgm: MigrationBuilder): Promise<void> {
     notNull: true,
     default: "pending",
     check: "status IN ('pending', 'active', 'defaulted', 'completed')",
-  });
+  } as any);
 
   // Drop circle_type index
   pgm.dropIndex("circles", "circle_type", {
