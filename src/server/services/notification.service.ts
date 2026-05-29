@@ -11,6 +11,7 @@ import {
   sendCircleCancelledNoRefundSms,
   sendCirclePausedSms,
   sendCircleResumedSms,
+  sendWaitlistSpotOpenedSms,
 } from "@/lib/sms";
 import type { User } from "@/types";
 
@@ -281,4 +282,23 @@ export async function notifyCircleResumed(
     }
   });
   await Promise.allSettled(notifications);
+}
+
+/**
+ * Notify a waitlisted user that a spot has opened in a circle
+ */
+export async function notifyWaitlistSpotOpened(
+  userId: string,
+  circleName: string
+): Promise<void> {
+  if (!(await canSendSms(userId))) return;
+
+  const phone = await getUserPhone(userId);
+  if (!phone) return;
+
+  try {
+    await sendWaitlistSpotOpenedSms(phone, circleName);
+  } catch (error) {
+    console.error(`Failed to send waitlist spot notification to ${userId}:`, error);
+  }
 }

@@ -61,6 +61,8 @@ describe("circle.service", () => {
       contributionCurrency: "NGN" as const,
       maxMembers: 5,
       cycleFrequency: "monthly" as const,
+      circleType: "public" as const,
+      gracePeriodHours: 24,
       payoutMethod: "fixed" as const,
     };
 

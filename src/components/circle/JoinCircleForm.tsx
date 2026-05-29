@@ -23,7 +23,6 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
   const [noSavedKey, setNoSavedKey] = useState(false);
   const [stellarPublicKey, setStellarPublicKey] = useState("");
   const [optimisticCount, setOptimisticCount] = useState(circle.memberCount ?? 0);
-  const [noSavedKey, setNoSavedKey] = useState(false);
 
   const { connectionState, publicKey, error: walletError, connect, disconnect } = useFreighterWallet();
 

@@ -57,6 +57,7 @@ function makeCircle(overrides: Partial<Circle> = {}): Circle {
     contributionFiat: 16000,
     contributionCurrency: "NGN",
     circleType: "public",
+    gracePeriodHours: 24,
     maxMembers: 3,
     cycleFrequency: "monthly",
     payoutMethod: "fixed",
