@@ -42,6 +42,43 @@ export async function adminListCircles(includeDeleted = false): Promise<AdminCir
 }
 
 /**
+ * List soft-deleted circles (admin only).
+ */
+export async function adminListDeletedCircles(): Promise<AdminCircleRow[]> {
+  const { rows } = await query<AdminCircleRow>(
+    `SELECT
+       c.id, c.name, c.creator_id as "creatorId",
+       c.contribution_usdc as "contributionUsdc",
+       c.contribution_ngn as "contributionNgn",
+       c.max_members as "maxMembers",
+       c.cycle_frequency as "cycleFrequency",
+       c.status, c.contract_id as "contractId",
+       c.current_cycle as "currentCycle",
+       c.next_payout_at as "nextPayoutAt",
+       c.created_at as "createdAt",
+       c.updated_at as "updatedAt",
+       c.deleted_at as "deletedAt",
+       COUNT(m.id)::int AS "memberCount"
+     FROM circles c
+     LEFT JOIN members m ON m.circle_id = c.id
+     WHERE c.deleted_at IS NOT NULL
+     GROUP BY c.id
+     ORDER BY c.deleted_at DESC`
+  );
+  return rows;
+}
+
+/**
+ * Soft-delete a user by setting deleted_at (admin only).
+ */
+export async function adminSoftDeleteUser(userId: string): Promise<void> {
+  await query(
+    "UPDATE users SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+    [userId]
+  );
+}
+
+/**
  * List all payouts across all circles, joined with circle name and recipient user id.
  */
 export async function adminListPayouts(): Promise<AdminPayoutRow[]> {
