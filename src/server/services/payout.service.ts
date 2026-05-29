@@ -1,39 +1,11 @@
 import { query, transaction } from "@/lib/db";
-import { sendUsdcPayment, horizonServer, USDC } from "@/lib/stellar";
+import { sendUsdcPayment, validateStellarRecipient } from "@/lib/stellar";
 import { invokeContractPayout } from "@/lib/soroban";
 import { getCircleById, getMembersByCircle, updateCircleStatus } from "./circle.service";
 import { withPayoutLock, PayoutLockError } from "./payout-lock";
 import { notifyPayoutProcessed, notifyCircleCompleted } from "./notification.service";
 import type { Payout } from "@/types";
 import { randomUUID } from "crypto";
-import { StrKey } from "@stellar/stellar-sdk";
-
-/**
- * Validate a Stellar public key format, account existence, and USDC trustline.
- * Throws a descriptive error if any check fails.
- */
-async function validateStellarRecipient(publicKey: string): Promise<void> {
-  if (!StrKey.isValidEd25519PublicKey(publicKey)) {
-    throw new Error(`Invalid Stellar public key: ${publicKey}`);
-  }
-
-  let account;
-  try {
-    account = await horizonServer.loadAccount(publicKey);
-  } catch {
-    throw new Error(`Stellar account not found on-chain: ${publicKey}`);
-  }
-
-  const hasTrustline = account.balances.some(
-    (b) =>
-      b.asset_type !== "native" &&
-      (b as { asset_code: string; asset_issuer: string }).asset_code === USDC.getCode() &&
-      (b as { asset_code: string; asset_issuer: string }).asset_issuer === USDC.getIssuer()
-  );
-  if (!hasTrustline) {
-    throw new Error(`Recipient account has no USDC trustline: ${publicKey}`);
-  }
-}
 
 export { PayoutLockError };
 

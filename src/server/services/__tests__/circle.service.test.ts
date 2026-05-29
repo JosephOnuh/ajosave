@@ -1,28 +1,49 @@
-import { 
-  createCircle, 
-  joinCircle, 
-  listOpenCircles, 
-  getCirclesByUser, 
-  approveJoinRequest, 
-  rejectJoinRequest, 
-  shuffleAndPersistPositions 
+import {
+  createCircle,
+  joinCircle,
+  listOpenCircles,
+  getCirclesByUser,
+  approveJoinRequest,
+  rejectJoinRequest,
+  shuffleAndPersistPositions,
+  cancelCircle,
 } from "@/server/services/circle.service";
 import * as db from "@/lib/db";
 import * as soroban from "@/lib/soroban";
 import * as fx from "@/lib/fx";
+import * as stellar from "@/lib/stellar";
 
-jest.mock("@/lib/db");
+jest.mock("@/lib/db", () => ({
+  query: jest.fn(),
+  transaction: jest.fn(),
+}));
 jest.mock("@/lib/soroban");
 jest.mock("@/lib/fx");
+jest.mock("@/lib/stellar", () => ({
+  sendUsdcPayment: jest.fn(),
+  validateStellarRecipient: jest.fn(),
+}));
+jest.mock("@/server/services/notification.service", () => ({
+  notifyCircleCancelled: jest.fn().mockResolvedValue(undefined),
+}));
 
 const mockQuery = db.query as jest.MockedFunction<typeof db.query>;
 const mockTransaction = db.transaction as jest.MockedFunction<typeof db.transaction>;
-const mockDeployAjoContract = soroban.deployAjoContract as jest.MockedFunction<typeof soroban.deployAjoContract>;
+const mockDeployAjoContract = soroban.deployAjoContract as jest.MockedFunction<
+  typeof soroban.deployAjoContract
+>;
 const mockGetFiatPerUsdc = fx.getFiatPerUsdc as jest.MockedFunction<typeof fx.getFiatPerUsdc>;
+const mockSendUsdcPayment = stellar.sendUsdcPayment as jest.MockedFunction<
+  typeof stellar.sendUsdcPayment
+>;
+const mockValidateStellarRecipient = stellar.validateStellarRecipient as jest.MockedFunction<
+  typeof stellar.validateStellarRecipient
+>;
 
 const CIRCLE_ID = "circle-123";
 const USER_ID = "user-456";
 const CREATOR_ID = "creator-789";
+const STELLAR_PUBLIC_KEY = "GDNIKPB2TPPS2RZG6TDW76YFSPNVEINVTJIPVEPA25Y74TPSLBNOA336";
 
 const MOCK_CIRCLE = {
   id: CIRCLE_ID,
@@ -47,9 +68,68 @@ const MOCK_MEMBER = {
   position: 1,
 };
 
+function mockCancelCircleQueries(stellarPublicKey: string | null = STELLAR_PUBLIC_KEY) {
+  mockQuery.mockImplementation(async (sql: unknown) => {
+    const queryText = String(sql);
+
+    if (queryText.includes("SELECT id, name, creator_id, status, contribution_usdc")) {
+      return {
+        rows: [
+          {
+            id: CIRCLE_ID,
+            name: "Test Circle",
+            creator_id: CREATOR_ID,
+            status: "open",
+            contribution_usdc: "10.0000000",
+          },
+        ],
+        rowCount: 1,
+      } as any;
+    }
+
+    if (queryText.includes("UPDATE contributions") && queryText.includes("refund_pending")) {
+      return { rows: [], rowCount: 1 } as any;
+    }
+
+    if (queryText.includes("UPDATE circles") && queryText.includes("status = 'cancelled'")) {
+      return { rows: [{ ...MOCK_CIRCLE, status: "cancelled" }], rowCount: 1 } as any;
+    }
+
+    if (queryText.includes("SUM(c.amount_usdc)::text AS total_usdc")) {
+      return {
+        rows: [
+          {
+            member_id: "member-1",
+            user_id: USER_ID,
+            stellar_public_key: stellarPublicKey,
+            total_usdc: "10.0000000",
+          },
+        ],
+        rowCount: 1,
+      } as any;
+    }
+
+    if (queryText.includes("SET status = 'refunded'")) {
+      return { rows: [], rowCount: 1 } as any;
+    }
+
+    if (queryText.includes("SELECT DISTINCT m.user_id")) {
+      return { rows: [], rowCount: 0 } as any;
+    }
+
+    return { rows: [], rowCount: 0 } as any;
+  });
+}
+
+async function flushRefundJobs() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockGetFiatPerUsdc.mockResolvedValue(1600);
+  mockSendUsdcPayment.mockResolvedValue("refund-tx-hash");
+  mockValidateStellarRecipient.mockResolvedValue(undefined);
   mockTransaction.mockImplementation(async (cb) => cb(mockQuery));
 });
 
@@ -101,7 +181,10 @@ describe("circle.service", () => {
         .mockResolvedValueOnce({ rows: [{ count: "1" }], rowCount: 1 } as any); // count query
       const result = await listOpenCircles();
       expect(result).toEqual({ data: [MOCK_CIRCLE], total: 1, page: 1, limit: 20 });
-      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("status = 'open'"), expect.anything());
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining("status = 'open'"),
+        expect.anything()
+      );
     });
 
     it("should respect page and limit params", async () => {
@@ -126,7 +209,10 @@ describe("circle.service", () => {
       mockQuery.mockResolvedValue({ rows: [MOCK_CIRCLE], rowCount: 1 } as any);
       const result = await getCirclesByUser(USER_ID);
       expect(result).toEqual([MOCK_CIRCLE]);
-      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("creator_id = $1 OR m.user_id = $1"), [USER_ID]);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining("creator_id = $1 OR m.user_id = $1"),
+        [USER_ID]
+      );
     });
   });
 
@@ -140,7 +226,10 @@ describe("circle.service", () => {
       const result = await joinCircle(CIRCLE_ID, USER_ID);
 
       expect(result).toEqual(MOCK_MEMBER);
-      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO members"), expect.anything());
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO members"),
+        expect.anything()
+      );
     });
 
     it("should create a pending member for private circles", async () => {
@@ -148,7 +237,10 @@ describe("circle.service", () => {
       mockQuery
         .mockResolvedValueOnce({ rows: [privateCircle], rowCount: 1 } as any)
         .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any)
-        .mockResolvedValueOnce({ rows: [{ ...MOCK_MEMBER, status: "pending" }], rowCount: 1 } as any);
+        .mockResolvedValueOnce({
+          rows: [{ ...MOCK_MEMBER, status: "pending" }],
+          rowCount: 1,
+        } as any);
 
       const result = await joinCircle(CIRCLE_ID, USER_ID);
 
@@ -164,7 +256,10 @@ describe("circle.service", () => {
       mockQuery
         .mockResolvedValueOnce({ rows: [privateCircle], rowCount: 1 } as any)
         .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any)
-        .mockResolvedValueOnce({ rows: [{ ...MOCK_MEMBER, status: "active" }], rowCount: 1 } as any);
+        .mockResolvedValueOnce({
+          rows: [{ ...MOCK_MEMBER, status: "active" }],
+          rowCount: 1,
+        } as any);
 
       const result = await joinCircle(CIRCLE_ID, USER_ID, true);
 
@@ -178,7 +273,10 @@ describe("circle.service", () => {
     it("should throw error if circle is full", async () => {
       mockQuery
         .mockResolvedValueOnce({ rows: [MOCK_CIRCLE], rowCount: 1 } as any)
-        .mockResolvedValueOnce({ rows: [MOCK_MEMBER, MOCK_MEMBER, MOCK_MEMBER], rowCount: 3 } as any);
+        .mockResolvedValueOnce({
+          rows: [MOCK_MEMBER, MOCK_MEMBER, MOCK_MEMBER],
+          rowCount: 3,
+        } as any);
 
       await expect(joinCircle(CIRCLE_ID, USER_ID)).rejects.toThrow("Circle is full");
     });
@@ -212,7 +310,10 @@ describe("circle.service", () => {
     it("should approve a pending member", async () => {
       const pendingMember = { ...MOCK_MEMBER, status: "pending" };
       mockQuery
-        .mockResolvedValueOnce({ rows: [{ ...MOCK_CIRCLE, circleType: "private" }], rowCount: 1 } as any)
+        .mockResolvedValueOnce({
+          rows: [{ ...MOCK_CIRCLE, circleType: "private" }],
+          rowCount: 1,
+        } as any)
         .mockResolvedValueOnce({ rows: [pendingMember], rowCount: 1 } as any)
         .mockResolvedValueOnce({ rows: [], rowCount: 0 } as any) // active count
         .mockResolvedValueOnce({ rows: [MOCK_MEMBER], rowCount: 1 } as any); // update member
@@ -228,7 +329,9 @@ describe("circle.service", () => {
 
     it("should throw if not creator", async () => {
       mockQuery.mockResolvedValueOnce({ rows: [MOCK_CIRCLE], rowCount: 1 } as any);
-      await expect(approveJoinRequest(CIRCLE_ID, "member-1", "wrong-user")).rejects.toThrow("Only the creator can approve join requests");
+      await expect(approveJoinRequest(CIRCLE_ID, "member-1", "wrong-user")).rejects.toThrow(
+        "Only the creator can approve join requests"
+      );
     });
   });
 
@@ -253,8 +356,45 @@ describe("circle.service", () => {
     });
 
     it("should throw if circle already started", async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ ...MOCK_CIRCLE, status: "active" }], rowCount: 1 } as any);
-      await expect(shuffleAndPersistPositions(CIRCLE_ID, "seed")).rejects.toThrow("Positions can only be shuffled before the circle starts");
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ ...MOCK_CIRCLE, status: "active" }],
+        rowCount: 1,
+      } as any);
+      await expect(shuffleAndPersistPositions(CIRCLE_ID, "seed")).rejects.toThrow(
+        "Positions can only be shuffled before the circle starts"
+      );
+    });
+  });
+
+  describe("cancelCircle", () => {
+    it("validates the refund recipient before sending USDC", async () => {
+      mockCancelCircleQueries();
+
+      const result = await cancelCircle(CIRCLE_ID, CREATOR_ID);
+      await flushRefundJobs();
+
+      expect(result.status).toBe("cancelled");
+      expect(mockValidateStellarRecipient).toHaveBeenCalledWith(STELLAR_PUBLIC_KEY);
+      expect(mockSendUsdcPayment).toHaveBeenCalledWith(STELLAR_PUBLIC_KEY, "10.0000000");
+      expect(mockValidateStellarRecipient.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSendUsdcPayment.mock.invocationCallOrder[0]
+      );
+    });
+
+    it("leaves the refund pending when the recipient lacks a USDC trustline", async () => {
+      mockCancelCircleQueries();
+      mockValidateStellarRecipient.mockRejectedValue(
+        new Error(`Recipient account has no USDC trustline: ${STELLAR_PUBLIC_KEY}`)
+      );
+
+      await cancelCircle(CIRCLE_ID, CREATOR_ID);
+      await flushRefundJobs();
+
+      expect(mockSendUsdcPayment).not.toHaveBeenCalled();
+      expect(mockQuery).not.toHaveBeenCalledWith(
+        expect.stringContaining("SET status = 'refunded'"),
+        expect.anything()
+      );
     });
   });
 });

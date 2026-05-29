@@ -517,6 +517,7 @@ export async function cancelCircle(
     }
 
     try {
+      await validateStellarRecipient(stellar_public_key);
       const txHash = await sendUsdcPayment(stellar_public_key, total_usdc);
 
       // Mark contributions as refunded and record the tx hash

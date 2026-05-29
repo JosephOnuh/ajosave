@@ -1,4 +1,11 @@
-import { sendUsdcPayment, horizonServer } from "../stellar";
+import { Account } from "@stellar/stellar-sdk";
+import {
+  getUsdcBalance,
+  hasUsdcTrustline,
+  horizonServer,
+  sendUsdcPayment,
+  validateStellarRecipient,
+} from "../stellar";
 import logger from "../logger";
 
 // Mock the logger to keep test output clean
@@ -27,6 +34,7 @@ jest.mock("@/server/config", () => ({
 describe("sendUsdcPayment retry logic", () => {
   const destination = "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5";
   const amount = "10.0000000";
+  const mockAccount = () => new Account(destination, "1");
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -66,16 +74,17 @@ describe("sendUsdcPayment retry logic", () => {
     // First attempt fails with 503
     const error503: any = new Error("Service Unavailable");
     error503.response = { status: 503 };
-    
-    (horizonServer.submitTransaction as jest.Mock) = jest.fn()
+
+    (horizonServer.submitTransaction as jest.Mock) = jest
+      .fn()
       .mockRejectedValueOnce(error503)
       .mockResolvedValueOnce({ hash: "retry-success-hash" });
 
     const promise = sendUsdcPayment(destination, amount);
-    
+
     // Fast-forward through the backoff
     await jest.runAllTimersAsync();
-    
+
     const hash = await promise;
 
     expect(hash).toBe("retry-success-hash");
@@ -96,15 +105,15 @@ describe("sendUsdcPayment retry logic", () => {
     (horizonServer.loadAccount as jest.Mock) = jest.fn().mockResolvedValue(mockAccount);
     
     const errorBadSeq: any = new Error("Transaction Failed");
-    errorBadSeq.response = { 
+    errorBadSeq.response = {
       status: 400,
-      data: { extras: { result_codes: { transaction: "tx_bad_seq" } } }
+      data: { extras: { result_codes: { transaction: "tx_bad_seq" } } },
     };
-    
+
     (horizonServer.submitTransaction as jest.Mock) = jest.fn().mockRejectedValue(errorBadSeq);
 
     await expect(sendUsdcPayment(destination, amount)).rejects.toThrow("Transaction Failed");
-    
+
     // Should NOT retry fatal errors
     expect(horizonServer.loadAccount).toHaveBeenCalledTimes(1);
     expect(horizonServer.submitTransaction).toHaveBeenCalledTimes(1);
@@ -124,7 +133,7 @@ describe("sendUsdcPayment retry logic", () => {
     
     const errorTimeout: any = new Error("Network timeout");
     errorTimeout.response = { status: 504 };
-    
+
     (horizonServer.submitTransaction as jest.Mock) = jest.fn().mockRejectedValue(errorTimeout);
 
     const promise = sendUsdcPayment(destination, amount);
@@ -144,5 +153,74 @@ describe("sendUsdcPayment retry logic", () => {
       expect.objectContaining({ attempt: 4, fatal: false }),
       expect.stringContaining("failed permanently")
     );
+  });
+});
+
+describe("USDC trustline checks", () => {
+  const publicKey = "GDNIKPB2TPPS2RZG6TDW76YFSPNVEINVTJIPVEPA25Y74TPSLBNOA336";
+  const usdcBalance = {
+    asset_type: "credit_alphanum4",
+    asset_code: "USDC",
+    asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    balance: "42.0000000",
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("detects the configured USDC trustline", () => {
+    expect(
+      hasUsdcTrustline({ balances: [{ asset_type: "native", balance: "5" }, usdcBalance] })
+    ).toBe(true);
+    expect(hasUsdcTrustline({ balances: [{ asset_type: "native", balance: "5" }] })).toBe(false);
+  });
+
+  it("returns balance and trustline status for a funded USDC account", async () => {
+    (horizonServer.loadAccount as jest.Mock) = jest
+      .fn()
+      .mockResolvedValue({ balances: [usdcBalance] });
+
+    await expect(getUsdcBalance(publicKey)).resolves.toEqual({
+      balance: "42.0000000",
+      hasTrustline: true,
+    });
+  });
+
+  it("returns a zero balance and no trustline for missing accounts", async () => {
+    (horizonServer.loadAccount as jest.Mock) = jest.fn().mockRejectedValue(new Error("not found"));
+
+    await expect(getUsdcBalance(publicKey)).resolves.toEqual({
+      balance: "0",
+      hasTrustline: false,
+    });
+  });
+
+  it("validates a Stellar recipient before payouts", async () => {
+    (horizonServer.loadAccount as jest.Mock) = jest
+      .fn()
+      .mockResolvedValue({ balances: [usdcBalance] });
+
+    await expect(validateStellarRecipient(publicKey)).resolves.toBeUndefined();
+    expect(horizonServer.loadAccount).toHaveBeenCalledWith(publicKey);
+  });
+
+  it("rejects recipients that have no configured USDC trustline", async () => {
+    (horizonServer.loadAccount as jest.Mock) = jest.fn().mockResolvedValue({
+      balances: [{ asset_type: "native", balance: "5" }],
+    });
+
+    await expect(validateStellarRecipient(publicKey)).rejects.toThrow(
+      "Recipient account has no USDC trustline"
+    );
+  });
+
+  it("rejects invalid Stellar public keys before Horizon lookup", async () => {
+    (horizonServer.loadAccount as jest.Mock) = jest.fn();
+
+    await expect(validateStellarRecipient("not-a-stellar-key")).rejects.toThrow(
+      "Invalid Stellar public key"
+    );
+    expect(horizonServer.loadAccount).not.toHaveBeenCalled();
   });
 });
