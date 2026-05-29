@@ -51,6 +51,7 @@ export interface Member {
   id: string;
   circleId: string;
   userId: string;
+  displayName?: string; // joined from users table
   position: number | null; // payout order (1 = first to receive), null for pending members
   status: MemberStatus;
   hasReceivedPayout: boolean;

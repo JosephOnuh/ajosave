@@ -33,9 +33,10 @@ const CIRCLE_SELECT = `
 `;
 
 const MEMBER_SELECT = `
-  id, circle_id as "circleId", user_id as "userId", 
-  position, status, has_received_payout as "hasReceivedPayout", 
-  joined_at as "joinedAt", reviewed_at as "reviewedAt"
+  m.id, m.circle_id as "circleId", m.user_id as "userId",
+  u.display_name as "displayName",
+  m.position, m.status, m.has_received_payout as "hasReceivedPayout",
+  m.joined_at as "joinedAt", m.reviewed_at as "reviewedAt"
 `;
 
 export async function createCircle(
@@ -191,7 +192,7 @@ export async function joinCircle(
     if (circle.status !== "open") throw new Error("Circle is not open for joining");
 
     const { rows: memberRows } = await q<Member>(
-      `SELECT ${MEMBER_SELECT} FROM members WHERE circle_id = $1 AND status IN ('active', 'pending')`,
+      `SELECT ${MEMBER_SELECT} FROM members m JOIN users u ON u.id = m.user_id WHERE m.circle_id = $1 AND m.status IN ('active', 'pending')`,
       [circleId]
     );
     if (memberRows.length >= circle.maxMembers) throw new Error("Circle is full");
@@ -205,8 +206,11 @@ export async function joinCircle(
     const reviewedAt = (status === "active" && isPrivate) ? new Date() : null;
 
     const { rows: newMember } = await q<Member>(
-      `INSERT INTO members (id, circle_id, user_id, position, status, has_received_payout, joined_at, reviewed_at)
-       VALUES ($1,$2,$3,$4,$5,false,NOW(), $6) RETURNING ${MEMBER_SELECT}`,
+      `WITH ins AS (
+         INSERT INTO members (id, circle_id, user_id, position, status, has_received_payout, joined_at, reviewed_at)
+         VALUES ($1,$2,$3,$4,$5,false,NOW(), $6) RETURNING *
+       )
+       SELECT ${MEMBER_SELECT} FROM ins m JOIN users u ON u.id = m.user_id`,
       [randomUUID(), circleId, userId, position, status, reviewedAt]
     );
 
@@ -228,7 +232,7 @@ export async function joinCircle(
 
 export async function getMembersByCircle(circleId: string): Promise<Member[]> {
   const { rows } = await query<Member>(
-    `SELECT ${MEMBER_SELECT} FROM members WHERE circle_id = $1 ORDER BY position`,
+    `SELECT ${MEMBER_SELECT} FROM members m JOIN users u ON u.id = m.user_id WHERE m.circle_id = $1 ORDER BY m.position`,
     [circleId]
   );
   return rows;
@@ -255,7 +259,7 @@ export async function shuffleAndPersistPositions(
     if (circle.status !== "open") throw new Error("Positions can only be shuffled before the circle starts");
 
     const { rows: memberRows } = await q<Member>(
-      `SELECT ${MEMBER_SELECT} FROM members WHERE circle_id = $1 ORDER BY position`,
+      `SELECT ${MEMBER_SELECT} FROM members m JOIN users u ON u.id = m.user_id WHERE m.circle_id = $1 ORDER BY m.position`,
       [circleId]
     );
 
