@@ -103,17 +103,23 @@ export function AdminDashboard() {
   return (
     <>
       <div className={styles.header}>
-        <div className={styles.tabs}>
+        <div className={styles.tabs} role="tablist" aria-label="Admin sections">
           <button
             className={styles.tab}
+            role="tab"
             aria-selected={tab === "circles"}
+            aria-controls="tab-panel-circles"
+            id="tab-circles"
             onClick={() => setTab("circles")}
           >
             Circles ({circles.length})
           </button>
           <button
             className={styles.tab}
+            role="tab"
             aria-selected={tab === "payouts"}
+            aria-controls="tab-panel-payouts"
+            id="tab-payouts"
             onClick={() => setTab("payouts")}
           >
             Payouts ({payouts.length})
@@ -130,22 +136,26 @@ export function AdminDashboard() {
       </div>
 
       {newItemsCount > 0 && (
-        <div className={styles.newItemsBanner}>
+        <div className={styles.newItemsBanner} role="status" aria-live="polite">
           🎉 {newItemsCount} new {tab === "circles" ? "circle" : "payout"}
           {newItemsCount !== 1 ? "s" : ""} added!
         </div>
       )}
 
-      {error && <div className={styles.error}>{error}</div>}
+      {error && <div className={styles.error} role="alert">{error}</div>}
 
       {tab === "analytics" ? (
         <AnalyticsDashboard />
       ) : loading ? (
         <div className={styles.loading}>Loading…</div>
       ) : tab === "circles" ? (
-        <CirclesTable circles={circles} />
+        <div id="tab-panel-circles" role="tabpanel" aria-labelledby="tab-circles">
+          <CirclesTable circles={circles} />
+        </div>
       ) : (
-        <PayoutsTable payouts={payouts} />
+        <div id="tab-panel-payouts" role="tabpanel" aria-labelledby="tab-payouts">
+          <PayoutsTable payouts={payouts} />
+        </div>
       )}
     </>
   );

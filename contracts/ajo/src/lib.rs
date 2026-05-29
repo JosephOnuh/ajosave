@@ -61,6 +61,8 @@ pub enum DataKey {
     // TTL Configuration
     TtlThreshold,
     TtlExtendTo,
+    // Reentrancy guard (issue #264)
+    PayoutLock,
 }
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
@@ -248,9 +250,23 @@ impl AjoContract {
     }
 
     /// Contribute for the current cycle.
-    pub fn contribute(env: Env, member: Address) {
+    ///
+    /// # Amount Validation (issue #265)
+    /// The caller must supply the exact `amount` they intend to transfer.
+    /// The contract rejects any value that does not equal `ContributionAmount`,
+    /// preventing both under-contributions and over-contributions.
+    pub fn contribute(env: Env, member: Address, amount: i128) {
         Self::extend_instance_ttl(&env);
         member.require_auth();
+
+        let required_amount: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ContributionAmount)
+            .expect("not initialized");
+        if amount != required_amount {
+            panic!("contribution amount must equal required amount");
+        }
 
         let current_cycle: u32 = env.storage().instance().get(&DataKey::CurrentCycle).expect("not initialized");
         if current_cycle == 0 {
@@ -334,8 +350,28 @@ impl AjoContract {
     }
 
     /// Trigger payout to the current cycle's recipient. Only callable by admin after next_payout_time.
+    ///
+    /// # Security – Reentrancy Guard (issue #264)
+    /// Although Soroban's execution model does not support traditional EVM-style reentrancy,
+    /// a `PayoutLock` flag is set at the start of this function and cleared at the end as an
+    /// explicit defence-in-depth measure. Any re-entrant or concurrent invocation (e.g. via
+    /// cross-contract calls or future protocol changes) will panic with "payout already in progress".
+    /// The contract also follows the checks-effects-interactions pattern: all state mutations
+    /// occur before the external token transfer.
     pub fn payout(env: Env) {
         Self::extend_instance_ttl(&env);
+
+        // ─── Reentrancy guard: acquire lock ───────────────────────────────────
+        let locked: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::PayoutLock)
+            .unwrap_or(false);
+        if locked {
+            panic!("payout already in progress");
+        }
+        env.storage().instance().set(&DataKey::PayoutLock, &true);
+
         let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
         admin.require_auth();
 
@@ -416,6 +452,9 @@ impl AjoContract {
         // ─── Interaction: Transfer tokens ─────────────────────────────────────
         let token_client = token::Client::new(&env, &token);
         token_client.transfer(&env.current_contract_address(), &recipient, &pot);
+
+        // ─── Reentrancy guard: release lock ───────────────────────────────────
+        env.storage().instance().set(&DataKey::PayoutLock, &false);
 
         // ─── Events ───────────────────────────────────────────────────────────
         env.events().publish((Symbol::new(&env, "payout"),), (recipient.clone(), pot, current_cycle));
@@ -619,6 +658,29 @@ impl AjoContract {
         env.storage().instance().remove(&DataKey::ApprovalExpiry(op_hash.clone()));
     }
 
+    /// Propose a new admin. Only the current admin can call this.
+    /// The proposed admin must call `accept_admin` to complete the transfer.
+    pub fn propose_admin(env: Env, new_admin: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
+        env.events().publish((Symbol::new(&env, "admin_proposed"),), (admin, new_admin));
+    }
+
+    /// Accept the admin role. Only the pending admin can call this.
+    pub fn accept_admin(env: Env) {
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .expect("no pending admin");
+        pending.require_auth();
+        let old_admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
+        env.storage().instance().set(&DataKey::Admin, &pending);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+        env.events().publish((Symbol::new(&env, "admin_transferred"),), (old_admin, pending));
+    }
+
     /// Set TTL configuration. Admin-only.
     pub fn set_ttl_config(env: Env, threshold: u32, extend_to: u32) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
@@ -641,6 +703,13 @@ impl AjoContract {
         env.storage()
             .persistent()
             .extend_ttl(key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+    }
+
+    /// Test-only helper: force the payout lock to a given value.
+    /// Used to simulate a re-entrant call in the Soroban sandbox.
+    #[cfg(test)]
+    pub fn set_payout_lock(env: Env, locked: bool) {
+        env.storage().instance().set(&DataKey::PayoutLock, &locked);
     }
 }
 
@@ -720,7 +789,7 @@ mod tests {
         client.payout(&signers.get(0).unwrap(), &op_hash);
         assert_eq!(token.balance(&members.get(0).unwrap()), 1_100_000_000);
 
-        for m in members.iter() { client.contribute(m); }
+        for m in members.iter() { client.contribute(m, &100_000_000); }
         env.ledger().with_mut(|l| l.timestamp = 172802);
 
         let op_hash2 = make_op_hash(&env, "payout:2");
@@ -728,7 +797,7 @@ mod tests {
         client.approve_operation(&signers.get(1).unwrap(), &op_hash2);
         client.payout(&signers.get(0).unwrap(), &op_hash2);
 
-        for m in members.iter() { client.contribute(m); }
+        for m in members.iter() { client.contribute(m, &100_000_000); }
         env.ledger().with_mut(|l| l.timestamp = 259203);
 
         let op_hash3 = make_op_hash(&env, "payout:3");
@@ -773,7 +842,7 @@ mod tests {
         env.mock_all_auths();
         let (_, members, _, _, client) = setup(&env);
         for m in members.iter() { client.join(m); }
-        client.contribute(&members.get(0).unwrap());
+        client.contribute(&members.get(0).unwrap(), &100_000_000);
     }
 
     #[test]
@@ -795,8 +864,8 @@ mod tests {
         client.payout();
 
         // Only members[0] and members[1] contribute for cycle 2; members[2] defaults
-        client.contribute(&members.get(0).unwrap());
-        client.contribute(&members.get(1).unwrap());
+        client.contribute(&members.get(0).unwrap(), &100_000_000);
+        client.contribute(&members.get(1).unwrap(), &100_000_000);
 
         env.ledger().with_mut(|l| l.timestamp = 172802);
         client.payout();
@@ -879,7 +948,7 @@ mod tests {
         }
 
         // Only member 0 contributes for cycle 2
-        client.contribute(&members.get(0).unwrap());
+        client.contribute(&members.get(0).unwrap(), &100_000_000);
 
         let status3 = client.get_contribution_status(&2u32);
         let (_, m0_paid) = status3.get(0).unwrap();
@@ -915,6 +984,27 @@ mod tests {
         let (cycle, _, _, completed) = client.get_state();
         assert_eq!(cycle, 2);
         assert!(!completed);
+    }
+
+    #[test]
+    fn test_propose_and_accept_admin() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (admin, _, _, _, client) = setup(&env);
+        let new_admin = Address::generate(&env);
+        client.propose_admin(&new_admin);
+        client.accept_admin();
+        // After transfer, new admin can call admin-only functions (e.g. payout)
+        // We just verify no panic — the event is the canonical proof
+    }
+
+    #[test]
+    #[should_panic(expected = "no pending admin")]
+    fn test_accept_admin_without_proposal_panics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, _, _, _, client) = setup(&env);
+        client.accept_admin();
     }
 }
 
