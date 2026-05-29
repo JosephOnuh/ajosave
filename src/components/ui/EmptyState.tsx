@@ -23,7 +23,7 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <div className={styles.empty} role="status">
-      <div className={styles.illustration} aria-hidden="true">
+      <div className={styles.illustration}>
         {illustration === "circles" ? <CirclesIllustration /> : <SearchIllustration />}
       </div>
       <h2 className={styles.title}>{title}</h2>
