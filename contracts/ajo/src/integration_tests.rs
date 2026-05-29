@@ -313,7 +313,7 @@ mod integration {
         f.env.ledger().with_mut(|l| l.timestamp = f.interval + 1);
         f.client.payout(); // lock acquired → released
 
-        for m in f.members.iter() { f.client.contribute(m); }
+        for m in f.members.iter() { f.client.contribute(m, &f.contribution); }
         f.env.ledger().with_mut(|l| l.timestamp = f.interval * 2 + 2);
         f.client.payout(); // must succeed — lock was released
 
@@ -584,7 +584,7 @@ mod integration {
         f.client.payout();
 
         // Only member[0] contributes for cycle 2
-        f.client.contribute(&f.members.get(0).unwrap());
+        f.client.contribute(&f.members.get(0).unwrap(), &f.contribution);
         let status2 = f.client.get_contribution_status(&2u32);
         let (_, m0) = status2.get(0).unwrap();
         let (_, m1) = status2.get(1).unwrap();
@@ -629,7 +629,7 @@ mod integration {
         f.client.payout();
 
         // Contribute before next payout time (on-time)
-        f.client.contribute(&member);
+        f.client.contribute(&member, &f.contribution);
 
         let rep = f.client.get_reputation(&member);
         assert!(rep > 0, "reputation should be positive after on-time contribution");
