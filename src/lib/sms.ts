@@ -108,3 +108,11 @@ export async function sendCircleCancelledNoRefundSms(
   const message = `Ajosave: The circle "${circleName}" has been cancelled by the creator. You had no confirmed contributions, so no refund is needed.`;
   await sendSms(phone, message);
 }
+
+export async function sendWaitlistSpotOpenedSms(
+  phone: string,
+  circleName: string
+): Promise<void> {
+  const message = `Ajosave: A spot has opened up in "${circleName}"! Since you are on the waitlist, you can now join. Visit your dashboard to secure your spot now!`;
+  await sendSms(phone, message);
+}

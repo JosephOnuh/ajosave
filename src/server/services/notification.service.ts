@@ -9,15 +9,13 @@ import {
   sendJoinRequestRejectedSms,
   sendCircleCancelledSms,
   sendCircleCancelledNoRefundSms,
+  sendWaitlistSpotOpenedSms,
 } from "@/lib/sms";
 import type { User } from "@/types";
 
-/**
- * Check if user has SMS notifications enabled
- */
 async function canSendSms(userId: string): Promise<boolean> {
-  const { rows } = await query<User>(
-    "SELECT sms_notifications_enabled FROM users WHERE id = $1",
+  const { rows } = await query<{ smsNotificationsEnabled: boolean }>(
+    `SELECT sms_notifications_enabled as "smsNotificationsEnabled" FROM users WHERE id = $1`,
     [userId]
   );
   return rows[0]?.smsNotificationsEnabled ?? false;
@@ -241,5 +239,24 @@ export async function notifyCircleCancelled(
     }
   } catch (error) {
     console.error(`Failed to send circle cancellation notification to ${userId}:`, error);
+  }
+}
+
+/**
+ * Notify a waitlisted user that a spot in the circle has opened up.
+ */
+export async function notifyWaitlistSpotOpened(
+  userId: string,
+  circleName: string
+): Promise<void> {
+  if (!(await canSendSms(userId))) return;
+
+  const phone = await getUserPhone(userId);
+  if (!phone) return;
+
+  try {
+    await sendWaitlistSpotOpenedSms(phone, circleName);
+  } catch (error) {
+    console.error(`Failed to send waitlist spot opened SMS to ${userId}:`, error);
   }
 }
