@@ -102,8 +102,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
           data: {
             message: "Account is locked",
             lockout: lockoutStatus,
-          } as any,
-        },
+          },
+        } as any,
         { status: 423 }
       );
     }
@@ -129,8 +129,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
           data: {
             message: "OTP verification failed",
             lockout: updatedStatus,
-          } as any,
-        },
+          },
+        } as any,
         { status: statusCode }
       );
     }

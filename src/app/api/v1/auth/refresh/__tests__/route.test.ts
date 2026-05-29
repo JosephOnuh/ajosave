@@ -10,7 +10,10 @@ jest.mock("@/lib/db");
 jest.mock("@/server/middleware", () => ({
   withErrorHandler: (handler: Function) => handler,
 }));
-jest.mock("jose");
+jest.mock("jose", () => ({
+  ...jest.requireActual("jose"),
+  SignJWT: jest.fn(),
+}));
 
 describe("POST /api/auth/refresh", () => {
   beforeEach(() => {
@@ -112,12 +115,12 @@ describe("POST /api/auth/refresh", () => {
     const setCookieHeader = response.headers.get("set-cookie");
     expect(setCookieHeader).toContain("refreshToken=new_refresh_token");
     expect(setCookieHeader).toContain("HttpOnly");
-    expect(setCookieHeader).toContain("SameSite=Lax");
+    expect(setCookieHeader?.toLowerCase()).toContain("samesite=lax");
   });
 
   it("should set secure cookie in production", async () => {
     const originalEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    (process.env as any).NODE_ENV = "production";
 
     const req = new NextRequest("http://localhost:3000/api/auth/refresh", {
       method: "POST",
@@ -152,6 +155,6 @@ describe("POST /api/auth/refresh", () => {
     const setCookieHeader = response.headers.get("set-cookie");
     expect(setCookieHeader).toContain("Secure");
 
-    process.env.NODE_ENV = originalEnv;
+    (process.env as any).NODE_ENV = originalEnv;
   });
 });

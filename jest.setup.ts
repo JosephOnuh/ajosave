@@ -4,13 +4,16 @@ import { TextEncoder, TextDecoder } from "util";
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder as any;
 
-// Polyfill fetch globals for JSDOM environment
-if (typeof global.Request === "undefined") {
-  global.Request = globalThis.Request;
-  global.Response = globalThis.Response;
-  global.Headers = globalThis.Headers;
-  global.fetch = globalThis.fetch;
-}
+const timers = require("timers");
+global.setImmediate = global.setImmediate || timers.setImmediate;
+global.clearImmediate = global.clearImmediate || timers.clearImmediate;
+
+// Polyfill fetch globals for JSDOM environment using next's compiled primitives
+const primitives = require("next/dist/compiled/@edge-runtime/primitives");
+global.Request = primitives.Request;
+global.Response = primitives.Response;
+global.Headers = primitives.Headers;
+global.fetch = primitives.fetch;
 
 // Global mocks for Redis/ioredis to prevent tests from initiating real connections
 jest.mock("ioredis", () => {

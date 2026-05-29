@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import styles from "./PayoutHistory.module.css";
-import type { ContributionRow } from "@/app/api/circles/[id]/contributions/route";
+import type { ContributionRow } from "@/app/api/v1/circles/[id]/contributions/route";
 
 interface Props { circleId: string }
 
@@ -16,7 +16,7 @@ export function ContributionHistory({ circleId }: Props) {
   useEffect(() => {
     setRows(null);
     setError(null);
-    fetch(`/api/circles/${circleId}/contributions?page=${page}&limit=20`)
+    fetch(`/api/v1/circles/${circleId}/contributions?page=${page}&limit=20`)
       .then((r) => r.json())
       .then((json) => {
         if (!json.success) throw new Error(json.error || "Failed to load");

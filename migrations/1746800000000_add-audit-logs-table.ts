@@ -71,6 +71,6 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
 
 export async function down(pgm: MigrationBuilder): Promise<void> {
   pgm.dropTrigger("audit_logs", "audit_logs_immutable");
-  pgm.dropFunction("raise_immutable_error");
+  pgm.dropFunction("raise_immutable_error", []);
   pgm.dropTable("audit_logs");
 }

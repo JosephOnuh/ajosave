@@ -41,6 +41,7 @@ export interface Circle {
   nextPayoutAt?: Date;
   pausedAt?: Date | null;
   minReputation?: number; // minimum reputation score required to join (0-100)
+  category?: string;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date | null; // soft delete timestamp
@@ -134,3 +135,19 @@ export interface ApiError {
   code?: string;
 }
 export type ApiResponse<T> = ApiSuccess<T> | ApiError;
+
+// ─── Referral ─────────────────────────────────────────────────────────────────
+export interface Referral {
+  id: string;
+  referrerId: string;
+  referredUserId: string;
+  code: string;
+  createdAt: Date;
+}
+
+// ─── Reputation Score ──────────────────────────────────────────────────────────
+export interface ReputationScore {
+  score: number;
+  level: string;
+}
+

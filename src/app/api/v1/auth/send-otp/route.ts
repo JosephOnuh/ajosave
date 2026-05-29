@@ -77,8 +77,8 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
         data: {
           message: "Account is locked",
           lockout: lockoutStatus,
-        } as any,
-      },
+        },
+      } as any,
       { status: 423 }
     );
   }
