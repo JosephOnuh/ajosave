@@ -16,7 +16,7 @@ export interface User {
 }
 
 // ─── Circle ───────────────────────────────────────────────────────────────────
-export type CircleStatus = "open" | "active" | "completed" | "cancelled";
+export type CircleStatus = "open" | "active" | "completed" | "cancelled" | "paused";
 export type CircleType = "public" | "private";
 export type CycleFrequency = "weekly" | "biweekly" | "monthly";
 export type PayoutMethod = "fixed" | "randomized";
@@ -39,6 +39,7 @@ export interface Circle {
   currentCycle: number; // 1-indexed
   memberCount?: number; // calculated field
   nextPayoutAt?: Date;
+  pausedAt?: Date | null;
   minReputation?: number; // minimum reputation score required to join (0-100)
   createdAt: Date;
   updatedAt: Date;
@@ -52,6 +53,7 @@ export interface Member {
   id: string;
   circleId: string;
   userId: string;
+  displayName?: string; // joined from users table
   position: number | null; // payout order (1 = first to receive), null for pending members
   status: MemberStatus;
   hasReceivedPayout: boolean;
