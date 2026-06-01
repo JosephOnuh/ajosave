@@ -11,7 +11,13 @@
     "hero": "Trustless Rotating Savings on Stellar",
     "subtitle": "Join or create savings circles (Ajo/Esusu) powered by smart contracts. Contribute in Naira, receive in USDC.",
     "getStarted": "Get Started",
-    "browseCircles": "Browse Circles"
+    "browseCircles": "Browse Circles",
+    "poweredBy": "Powered by Stellar & USDC",
+    "heroTitle": "Ajo savings circles, trustless & on-chain",
+    "heroSubtitle": "The traditional West African rotating savings group — now powered by Soroban smart contracts. No middleman. No fraud. Automatic payouts in USDC.",
+    "startCircle": "Start a Circle",
+    "whyAjosave": "Why Ajosave?",
+    "howItWorks": "How it works"
   },
   "circles": {
     "title": "Browse Circles",

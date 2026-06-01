@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 const LOCALES = [
   { code: "en", label: "English" },
   { code: "yo", label: "Yorùbá" },
+  { code: "ig", label: "Igbo" },
+  { code: "ha", label: "Hausa" },
 ];
 
 export function LanguageSelector({ currentLocale }: { currentLocale: string }) {
