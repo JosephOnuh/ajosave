@@ -16,6 +16,7 @@ export const metadata: Metadata = {
   description: "Join or create trustless savings circles (Ajo/Esusu) powered by Stellar Soroban smart contracts and USDC.",
   keywords: ["ajo", "esusu", "savings", "stellar", "soroban", "usdc", "nigeria", "defi"],
   metadataBase: new URL("https://www.ajosave.app"),
+  themeColor: "#0f7a4a",
   openGraph: {
     title: "Ajosave — On-Chain Rotating Savings",
     description: "Trustless Ajo/Esusu savings circles on Stellar. Contribute in Naira, receive in USDC.",
