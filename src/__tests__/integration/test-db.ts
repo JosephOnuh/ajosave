@@ -34,6 +34,7 @@ export async function seedUser(overrides?: {
 export async function seedCircle(options: {
   creatorId: string;
   id?: string;
+  name?: string;
   maxMembers?: number;
   status?: string;
   contributionUsdc?: string;
@@ -51,12 +52,12 @@ export async function seedCircle(options: {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW())`,
     [
       id,
-      "Integration Circle",
+      options.name ?? "Integration Circle",
       options.creatorId,
       options.contributionUsdc ?? "1.0000000",
       options.contributionFiat ?? "100.00",
       options.contributionCurrency ?? "NGN",
-      options.maxMembers ?? 1,
+      options.maxMembers ?? 5,
       "weekly",
       options.payoutMethod ?? "randomized",
       null,
@@ -68,22 +69,47 @@ export async function seedCircle(options: {
   return id;
 }
 
-export async function seedMember(circleId: string, userId: string, overrides?: {
-  id?: string;
-  position?: number;
-  status?: string;
-}) {
+export async function seedMember(
+  circleId: string,
+  userId: string,
+  overrides?: {
+    id?: string;
+    position?: number;
+    status?: string;
+  }
+) {
   const id = overrides?.id ?? randomUUID();
   await query(
     `INSERT INTO members
        (id, circle_id, user_id, position, status, has_received_payout, joined_at)
      VALUES ($1, $2, $3, $4, $5, false, NOW())`,
+    [id, circleId, userId, overrides?.position ?? 1, overrides?.status ?? "active"]
+  );
+  return id;
+}
+
+export async function seedContribution(
+  memberId: string,
+  overrides?: {
+    id?: string;
+    cycle?: number;
+    status?: string;
+    amountUsdc?: string;
+    paystackReference?: string;
+  }
+) {
+  const id = overrides?.id ?? randomUUID();
+  await query(
+    `INSERT INTO contributions
+       (id, member_id, cycle, status, amount_usdc, paystack_reference, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
     [
       id,
-      circleId,
-      userId,
-      overrides?.position ?? 1,
-      overrides?.status ?? "active",
+      memberId,
+      overrides?.cycle ?? 1,
+      overrides?.status ?? "confirmed",
+      overrides?.amountUsdc ?? "1.0000000",
+      overrides?.paystackReference ?? `ref_${randomUUID()}`,
     ]
   );
   return id;
