@@ -20,6 +20,7 @@ export const joinCircleSchema = z.object({
   circleId: z.string().uuid(),
   stellarPublicKey: z.string().length(56, "Invalid Stellar public key"),
   token: z.string().optional(),
+  authorizationCode: z.string().optional(), // Paystack authorization code for recurring subscription
 });
 
 export const verifyOtpSchema = z.object({

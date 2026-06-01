@@ -6,6 +6,7 @@ import { getFiatPerUsdc } from "@/lib/fx";
 import { deployAjoContract } from "@/lib/soroban";
 import { sendUsdcPayment } from "@/lib/stellar";
 import { notifyCircleCancelled, notifyCirclePaused, notifyCircleResumed } from "./notification.service";
+import { createPlan } from "@/lib/paystack";
 
 export const fiatToUsdc = async (amount: number, currency: string): Promise<string> => {
   const rate = await getFiatPerUsdc(currency);
@@ -55,14 +56,29 @@ export async function createCircle(
     console.error("[createCircle] Contract deployment failed, proceeding without contractId:", err);
   }
 
+  // Create a Paystack recurring plan for automated contributions
+  let paystackPlanCode: string | null = null;
+  try {
+    paystackPlanCode = await createPlan({
+      name: `Ajosave: ${input.name}`,
+      amount: input.contributionAmount,
+      currency: input.contributionCurrency,
+      frequency: input.cycleFrequency,
+    });
+  } catch (err) {
+    console.error("[createCircle] Paystack plan creation failed, proceeding without plan:", err);
+  }
+
   const { rows } = await query<Circle>(
     `INSERT INTO circles
        (id, name, creator_id, contribution_usdc, contribution_fiat, contribution_currency,
-        max_members, cycle_frequency, payout_method, contract_id, grace_period_hours, status, current_cycle, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'open',0,NOW(),NOW())
+        max_members, cycle_frequency, payout_method, contract_id, grace_period_hours,
+        paystack_plan_code, status, current_cycle, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open',0,NOW(),NOW())
      RETURNING ${CIRCLE_SELECT}`,
     [id, input.name, creatorId, contributionUsdc, input.contributionAmount, input.contributionCurrency,
-     input.maxMembers, input.cycleFrequency, input.payoutMethod, contractId, input.gracePeriodHours ?? 24]
+     input.maxMembers, input.cycleFrequency, input.payoutMethod, contractId, input.gracePeriodHours ?? 24,
+     paystackPlanCode]
   );
   return rows[0];
 }
@@ -181,11 +197,12 @@ export async function getCirclesByUser(userId: string): Promise<Circle[]> {
 export async function joinCircle(
   circleId: string,
   userId: string,
-  isInvited: boolean = false
+  isInvited: boolean = false,
+  paystackAuthCode?: string
 ): Promise<Member> {
   return transaction(async (q) => {
-    const { rows: circleRows } = await q<Circle>(
-      `SELECT ${CIRCLE_SELECT} FROM circles WHERE id = $1 FOR UPDATE`,
+    const { rows: circleRows } = await q<Circle & { paystackPlanCode?: string }>(
+      `SELECT ${CIRCLE_SELECT}, paystack_plan_code as "paystackPlanCode" FROM circles WHERE id = $1 FOR UPDATE`,
       [circleId]
     );
     const circle = circleRows[0];
@@ -214,6 +231,31 @@ export async function joinCircle(
        SELECT ${MEMBER_SELECT} FROM ins m JOIN users u ON u.id = m.user_id`,
       [randomUUID(), circleId, userId, position, status, reviewedAt]
     );
+
+    // Subscribe active member to Paystack recurring plan (best-effort)
+    if (status === "active" && circle.paystackPlanCode && paystackAuthCode) {
+      const { rows: userRows } = await q<{ email: string; id: string }>(
+        "SELECT id, email FROM users WHERE id = $1",
+        [userId]
+      );
+      const userEmail = userRows[0]?.email;
+      if (userEmail) {
+        try {
+          const { subscribeToPlan } = await import("@/lib/paystack");
+          const subscriptionCode = await subscribeToPlan({
+            email: userEmail,
+            planCode: circle.paystackPlanCode,
+            authorizationCode: paystackAuthCode,
+          });
+          await q(
+            "UPDATE members SET paystack_subscription_code = $1 WHERE id = $2",
+            [subscriptionCode, newMember[0].id]
+          );
+        } catch (err) {
+          console.error("[joinCircle] Paystack subscription failed:", err);
+        }
+      }
+    }
 
     // Auto-start when full (only count active members)
     const activeMembers = memberRows.filter(m => m.status === 'active').length + (status === 'active' ? 1 : 0);

@@ -93,3 +93,52 @@ export async function verifyPayment(
     currency: data.data.currency,
   };
 }
+
+const FREQUENCY_INTERVAL: Record<string, string> = {
+  weekly: "weekly",
+  biweekly: "biweekly",
+  monthly: "monthly",
+};
+
+/** Create a Paystack recurring plan for a circle. Returns the plan code. */
+export async function createPlan(params: {
+  name: string;
+  amount: number;
+  currency: string;
+  frequency: string;
+}): Promise<string> {
+  const interval = FREQUENCY_INTERVAL[params.frequency] ?? "monthly";
+  const amountInSmallestUnit = toSmallestUnit(params.amount, params.currency as import("@/types").SupportedCurrency);
+  const { data } = await client.post("/plan", {
+    name: params.name,
+    amount: amountInSmallestUnit,
+    interval,
+    currency: PAYSTACK_CURRENCY_MAP[params.currency as import("@/types").SupportedCurrency] ?? params.currency,
+  });
+  return data.data.plan_code as string;
+}
+
+/** Subscribe a customer (by email) to a Paystack plan. Returns the subscription code. */
+export async function subscribeToPlan(params: {
+  email: string;
+  planCode: string;
+  authorizationCode: string;
+}): Promise<string> {
+  const { data } = await client.post("/subscription", {
+    customer: params.email,
+    plan: params.planCode,
+    authorization: params.authorizationCode,
+  });
+  return data.data.subscription_code as string;
+}
+
+/** Cancel a Paystack subscription. */
+export async function cancelSubscription(params: {
+  subscriptionCode: string;
+  emailToken: string;
+}): Promise<void> {
+  await client.post("/subscription/disable", {
+    code: params.subscriptionCode,
+    token: params.emailToken,
+  });
+}

@@ -11,6 +11,7 @@ import {
   sendCircleCancelledNoRefundSms,
   sendCirclePausedSms,
   sendCircleResumedSms,
+  sendSubscriptionChargeFailedSms,
 } from "@/lib/sms";
 import type { User } from "@/types";
 
@@ -281,4 +282,22 @@ export async function notifyCircleResumed(
     }
   });
   await Promise.allSettled(notifications);
+}
+
+/**
+ * Notify a member when their Paystack subscription auto-charge fails
+ */
+export async function notifySubscriptionChargeFailed(
+  userId: string,
+  circleName: string,
+  amount: string
+): Promise<void> {
+  if (!(await canSendSms(userId))) return;
+  const phone = await getUserPhone(userId);
+  if (!phone) return;
+  try {
+    await sendSubscriptionChargeFailedSms(phone, circleName, amount);
+  } catch (error) {
+    console.error(`Failed to send charge-failed notification to ${userId}:`, error);
+  }
 }

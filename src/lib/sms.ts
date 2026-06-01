@@ -131,3 +131,12 @@ export async function sendCircleResumedSms(
   const message = `Ajosave: The circle "${circleName}" has been resumed. Normal schedule and payouts have been restored.`;
   await sendSms(phone, message);
 }
+
+export async function sendSubscriptionChargeFailedSms(
+  phone: string,
+  circleName: string,
+  amount: string
+): Promise<void> {
+  const message = `Ajosave: Your automatic contribution of ${amount} to "${circleName}" failed. Please update your payment method to avoid being marked as defaulted.`;
+  await sendSms(phone, message);
+}
