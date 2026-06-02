@@ -32,8 +32,11 @@ const cspHeader = [
 const securityHeaders = [
   // Report-Only first — switch to Content-Security-Policy once violations are reviewed
   { key: "Content-Security-Policy-Report-Only", value: cspHeader },
+  // Prevent MIME-type sniffing
   { key: "X-Content-Type-Options", value: "nosniff" },
+  // Deny framing to prevent clickjacking
   { key: "X-Frame-Options", value: "DENY" },
+  // Control referrer information
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
 ];
