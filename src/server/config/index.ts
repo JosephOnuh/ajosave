@@ -6,6 +6,7 @@ export const serverConfig = {
   stellar: {
     network: (process.env.STELLAR_NETWORK ?? "testnet") as "testnet" | "mainnet",
     horizonUrl: process.env.STELLAR_HORIZON_URL ?? "https://horizon-testnet.stellar.org",
+    horizonFallbackUrl: process.env.STELLAR_HORIZON_FALLBACK_URL ?? "",
     networkPassphrase:
       process.env.STELLAR_NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015",
     ajoContractId: process.env.STELLAR_AJO_CONTRACT_ID ?? "",
@@ -18,7 +19,10 @@ export const serverConfig = {
     issuer: process.env.USDC_ISSUER ?? "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
     assetCode: process.env.USDC_ASSET_CODE ?? "USDC",
   },
-  paystack: { secretKey: process.env.PAYSTACK_SECRET_KEY ?? "" },
+  paystack: {
+    secretKey: process.env.PAYSTACK_SECRET_KEY ?? "",
+    platformSubaccount: process.env.PAYSTACK_PLATFORM_SUBACCOUNT ?? "",
+  },
   termii: {
     apiKey: process.env.TERMII_API_KEY ?? "",
     senderId: process.env.TERMII_SENDER_ID ?? "Ajosave",
@@ -31,4 +35,11 @@ export const serverConfig = {
   database: { url: process.env.DATABASE_URL ?? "" },
   cronSecret: process.env.CRON_SECRET ?? "",
   authSecret: process.env.NEXTAUTH_SECRET ?? "development-secret-keep-it-safe",
+  kyc: {
+    smilePartnerId: process.env.SMILE_PARTNER_ID ?? "",
+    smileApiKey: process.env.SMILE_API_KEY ?? "",
+    smileCallbackUrl: process.env.SMILE_CALLBACK_URL ?? "",
+    /** NGN threshold above which circles require KYC (default 100,000) */
+    thresholdNgn: parseInt(process.env.KYC_THRESHOLD_NGN ?? "100000", 10),
+  },
 } as const;

@@ -4,7 +4,8 @@ import { verifyOtpSchema } from "@/types/schemas";
 import { getRedis } from "./redis";
 import { query } from "./db";
 import { isLockedOut, recordFailure, resetLockout } from "./lockout";
-import { hashToken, createSession } from "./sessions";
+import { generateRefreshToken, getTokenExpiries } from "./refresh-tokens";
+import { encrypt, hmacIndex } from "./encryption";
 
 const ACCESS_TOKEN_TTL = 15 * 60; // 15 minutes in seconds
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
@@ -46,21 +47,22 @@ export const authOptions: NextAuthOptions = {
         await resetLockout(phone);
         await redis.del(`otp:${phone}`); // OTP is single-use
 
-        // Load user from DB
+        // Load user via blind index (phone_hash) — never compare plaintext
+        const phoneHash = hmacIndex(phone);
         const result = await query<{ id: string; phone: string; name: string; role: string }>(
-          "SELECT id, phone, display_name as name, role FROM users WHERE phone = $1",
-          [phone]
+          "SELECT id, phone, display_name as name, role FROM users WHERE phone_hash = $1",
+          [phoneHash]
         );
         const user = result.rows[0];
 
         if (!user) {
           // Upsert: create user record on first successful OTP verification
           const { rows } = await query<{ id: string; phone: string; name: string; role: string }>(
-            `INSERT INTO users (id, phone, display_name, role, reputation_score, created_at)
-             VALUES (gen_random_uuid(), $1, 'Ajosave User', 'user', 0, NOW())
-             ON CONFLICT (phone) DO UPDATE SET phone = EXCLUDED.phone
+            `INSERT INTO users (id, phone, phone_hash, display_name, role, reputation_score, created_at)
+             VALUES (gen_random_uuid(), $1, $2, 'Ajosave User', 'user', 0, NOW())
+             ON CONFLICT (phone_hash) DO UPDATE SET phone = EXCLUDED.phone
              RETURNING id, phone, display_name as name, role`,
-            [phone]
+            [encrypt(phone), phoneHash]
           );
           return rows[0];
         }
@@ -73,21 +75,16 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger }) {
       const now = Math.floor(Date.now() / 1000);
 
-      // Initial sign-in: stamp both expiry times and generate session ID
+      // Initial sign-in: generate refresh token and stamp both expiry times
       if (user) {
+        const refreshToken = await generateRefreshToken(user.id);
         token.id = user.id;
         token.phone = (user as { phone?: string }).phone;
         token.role = (user as { role?: string }).role ?? "user";
-        token.accessTokenExpires = now + ACCESS_TOKEN_TTL;
-        token.refreshTokenExpires = now + REFRESH_TOKEN_TTL;
-        // Generate a unique session identifier for this login
-        const sessionId = `${user.id}-${now}-${Math.random().toString(36).substring(7)}`;
-        token.sessionId = sessionId;
-        
-        // Store session data for the signIn event
-        const expiresAt = new Date((now + REFRESH_TOKEN_TTL) * 1000);
-        pendingSessionData.set(user.id, { sessionId, expiresAt });
-        
+        token.refreshToken = refreshToken;
+        const expiries = getTokenExpiries();
+        token.accessTokenExpires = expiries.accessTokenExpires;
+        token.refreshTokenExpires = expiries.refreshTokenExpires;
         return token;
       }
 

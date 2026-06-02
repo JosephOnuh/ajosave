@@ -84,7 +84,7 @@ mod fuzz {
                 if cycle < *max_members {
                     for m in members.iter() {
                         let before = token.balance(&m);
-                        client.contribute(m);
+                        client.contribute(m, contribution);
                         let after = token.balance(&m);
                         assert_eq!(
                             before - after,
@@ -95,7 +95,7 @@ mod fuzz {
                 }
             }
 
-            let (_, _, _, completed) = client.get_state();
+            let (_, _, _, completed, _) = client.get_state();
             assert!(completed, "max_members={max_members}: circle must complete");
         }
     }
@@ -114,9 +114,9 @@ mod fuzz {
             ctx.client.payout();
 
             for m in ctx.members.iter() {
-                ctx.client.contribute(m); // first — ok
+                ctx.client.contribute(m, &ctx.contribution); // first — ok
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    ctx.client.contribute(m); // second — must panic
+                    ctx.client.contribute(m, &ctx.contribution); // second — must panic
                 }));
                 assert!(
                     result.is_err(),
@@ -139,7 +139,7 @@ mod fuzz {
             for _ in 0..5u32 {
                 let outsider = Address::generate(&ctx.env);
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    ctx.client.contribute(&outsider);
+                    ctx.client.contribute(&outsider, &ctx.contribution);
                 }));
                 assert!(
                     result.is_err(),
@@ -194,7 +194,7 @@ mod fuzz {
                 ctx.client.payout();
                 if cycle < max_members {
                     for m in ctx.members.iter() {
-                        ctx.client.contribute(m);
+                        ctx.client.contribute(m, &ctx.contribution);
                     }
                 }
             }
@@ -231,7 +231,7 @@ mod fuzz {
         // Payout should succeed without overflow panic
         ctx.client.payout();
 
-        let (cycle, _, _, _) = ctx.client.get_state();
+            let (cycle, _, _, _, _) = ctx.client.get_state();
         assert_eq!(cycle, 2, "should advance to cycle 2 after first payout");
     }
 }

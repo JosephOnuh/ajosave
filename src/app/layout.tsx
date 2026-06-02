@@ -5,6 +5,7 @@ import "@/styles/components.css";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { SessionProvider } from "next-auth/react";
+import { Analytics } from "@vercel/analytics/react";
 import { SentryUserContext } from "@/components/SentryUserContext";
 import { PWAProvider } from "@/components/PWAProvider";
 
@@ -38,13 +39,22 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var t=localStorage.getItem('theme')||((window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light');document.documentElement.setAttribute('data-theme',t);})();`,
+          }}
+        />
+      </head>
       <body>
         <SessionProvider>
+          <a href="#main-content" className="skip-link">Skip to main content</a>
           <SentryUserContext />
           <Navbar />
-          <main>{children}</main>
+          <main id="main-content">{children}</main>
           <Footer />
           <PWAProvider />
+          <Analytics />
         </SessionProvider>
       </body>
     </html>

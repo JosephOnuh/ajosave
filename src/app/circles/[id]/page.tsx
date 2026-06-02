@@ -7,10 +7,12 @@ import { MemberPayoutList } from "@/components/circle/MemberPayoutList";
 import { CircleActions } from "@/components/circle/CircleActions";
 import { PayoutCountdown } from "@/components/circle/PayoutCountdown";
 import { PayoutHistory } from "@/components/circle/PayoutHistory";
+import { ContributionHistory } from "@/components/circle/ContributionHistory";
 import { getCurrencySymbol, SupportedCurrency } from "@/lib/currency";
 import { format } from "date-fns";
 import type { Metadata } from "next";
 import { CircleChat } from "@/components/circle/CircleChat";
+import { CircleWaitlist } from "@/components/circle/CircleWaitlist";
 import styles from "./page.module.css";
 
 interface Props {
@@ -61,6 +63,16 @@ export default async function CircleDetailPage({ params }: Props) {
   const isActiveMember = members.some((m) => m.userId === userId && m.status === "active");
   const currencySymbol = getCurrencySymbol(circle.contributionCurrency as SupportedCurrency);
 
+  // Load waitlist status for this user
+  let isOnWaitlist = false;
+  let waitlistPosition: number | null = null;
+  if (userId) {
+    const { getWaitlistStatus } = await import("@/server/services/waitlist.service");
+    const status = await getWaitlistStatus(circle.id, userId);
+    isOnWaitlist = status.isOnWaitlist;
+    waitlistPosition = status.position;
+  }
+
   return (
     <div className={styles.page}>
       <div className="container">
@@ -85,8 +97,20 @@ export default async function CircleDetailPage({ params }: Props) {
             <PayoutHistory circleId={circle.id} />
           </div>
 
+          <div className="card" style={{ gridColumn: "1 / -1" }}>
+            <h2 className={styles.sectionTitle}>Contribution History</h2>
+            <ContributionHistory circleId={circle.id} />
+          </div>
+
           <div className="card">
             <h2 className={styles.sectionTitle}>Circle Details</h2>
+            
+            {circle.nextPayoutAt && circle.status === "active" && (
+              <div style={{ marginBottom: "var(--space-6)" }}>
+                <PayoutCountdown nextPayoutAt={circle.nextPayoutAt} />
+              </div>
+            )}
+
             <dl className={styles.details}>
               <div className={styles.detailRow}>
                 <dt>Contribution</dt>
@@ -111,14 +135,24 @@ export default async function CircleDetailPage({ params }: Props) {
                   <dd>{format(new Date(circle.nextPayoutAt), "MMM d, yyyy")}</dd>
                 </div>
               )}
+              {isCreator && (
+                <div className={styles.detailRow}>
+                  <dt>Invite Link</dt>
+                  <dd className={styles.inviteLinkCell}>
+                    <span className={styles.inviteLinkText}>
+                      {`${process.env.NEXT_PUBLIC_APP_URL}/circles/${circle.id}/join`}
+                    </span>
+                    <CopyButton
+                      text={`${process.env.NEXT_PUBLIC_APP_URL}/circles/${circle.id}/join`}
+                      label="Copy invite link"
+                    />
+                  </dd>
+                </div>
+              )}
             </dl>
-
-            {circle.nextPayoutAt && circle.status === "active" && (
-              <PayoutCountdown nextPayoutAt={circle.nextPayoutAt} />
-            )}
           </div>
 
-          <MemberPayoutList circle={circle} initialMembers={members} isCreator={isCreator} />
+          <MemberPayoutList circle={circle} initialMembers={members} isCreator={isCreator} currentUserId={userId} />
         </div>
 
         {userId && (
