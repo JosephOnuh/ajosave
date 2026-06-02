@@ -47,6 +47,7 @@ export async function getContractEvents(
           },
         ],
         limit: pageSize,
+      },
     }),
   });
 
