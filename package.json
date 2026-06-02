@@ -34,6 +34,11 @@
     "test:coverage": "jest --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "mobile:build": "next build && npx cap sync",
+    "mobile:ios": "next build && npx cap sync ios && npx cap open ios",
+    "mobile:android": "next build && npx cap sync android && npx cap open android",
+    "cap:sync": "npx cap sync",
+    "cap:copy": "npx cap copy",
     "contract:build": "cd contracts && stellar contract build",
     "contract:test": "cd contracts && cargo test",
     "contract:deploy": "ts-node scripts/deploy-contract.ts",
@@ -45,6 +50,10 @@
     "analyze": "ANALYZE=true npm run build"
   },
   "dependencies": {
+    "@capacitor/android": "6.2.0",
+    "@capacitor/core": "6.2.0",
+    "@capacitor/ios": "6.2.0",
+    "@capacitor/push-notifications": "6.0.2",
     "@hookform/resolvers": "^3.9.0",
     "@sentry/nextjs": "^8.28.0",
     "@stellar/freighter-api": "3.1.0",
