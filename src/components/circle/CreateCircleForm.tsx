@@ -163,23 +163,13 @@ export function CreateCircleForm() {
       </div>
 
       <div className="input-group">
-        <label className="input-label" htmlFor="yieldStrategy">Idle USDC Yield</label>
-        <select id="yieldStrategy" className="input" {...register("yieldStrategy")}>
-          <option value="none">None</option>
-          <option value="blend">Blend-compatible Stellar yield</option>
+        <label className="input-label" htmlFor="payoutMethod">Payout Order</label>
+        <select id="payoutMethod" className="input" {...register("payoutMethod")}>
+          <option value="fixed">Fixed (first-come-first-served)</option>
+          <option value="randomized">Randomized (locked when circle fills)</option>
         </select>
-        <small className="input-hint">
-          Optional: configure idle USDC to earn yield before payout. Risk disclosure will be shown to the circle creator.
-        </small>
-      </div>
-
-      <div className="input-group">
-        <label className="input-label" htmlFor="penaltyPercent">Missed Contribution Penalty (%)</label>
-        <input id="penaltyPercent" className="input" type="number" min={0} max={100} {...register("penaltyPercent", { valueAsNumber: true })} />
-        <small className="input-hint">
-          Percentage of the contribution charged as a penalty when a member misses a deadline.
-        </small>
-        {errors.penaltyPercent && <p className={styles.fieldError}>{errors.penaltyPercent.message}</p>}
+        <small className="input-hint">Randomized order is locked and visible to all members once the circle is full.</small>
+        {errors.payoutMethod && <p className={styles.fieldError}>{errors.payoutMethod.message}</p>}
       </div>
 
       {error && <p className={styles.error} role="alert">{error}</p>}
