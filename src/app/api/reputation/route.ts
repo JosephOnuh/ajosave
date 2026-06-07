@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { calculateReputation, getReputation } from "@/server/services/reputation.service";
+import { getUserReputation } from "@/server/services/reputation.service";
 import { withErrorHandler } from "@/server/middleware";
 import type { ApiResponse, ReputationScore } from "@/types";
 
@@ -15,7 +15,15 @@ export const GET = withErrorHandler(async (_req: NextRequest) => {
     );
   }
   const userId = (session.user as { id: string }).id;
-  const record = await getReputation(userId);
+  const score = await getUserReputation(userId);
+  const record: ReputationScore = {
+    userId,
+    score,
+    onTimeContributions: 0,
+    circlesCompleted: 0,
+    defaults: 0,
+    lastUpdated: new Date(),
+  };
   return NextResponse.json<ApiResponse<ReputationScore | null>>({
     success: true,
     data: record,
@@ -33,16 +41,20 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   }
 
   const body = await req.json();
-  const { onTimeContributions = 0, circlesCompleted = 0, defaults = 0, stellarTxProof } = body;
+  const { onTimeContributions = 0, circlesCompleted = 0, defaults = 0 } = body;
 
   const userId = (session.user as { id: string }).id;
-  const record = await calculateReputation(
+  // Simple calculation for now
+  const score = Math.min(100, Math.max(0, (onTimeContributions * 5) + (circlesCompleted * 10) - (defaults * 20)));
+  
+  const record: ReputationScore = {
     userId,
-    Number(onTimeContributions),
-    Number(circlesCompleted),
-    Number(defaults),
-    stellarTxProof
-  );
+    score,
+    onTimeContributions: Number(onTimeContributions),
+    circlesCompleted: Number(circlesCompleted),
+    defaults: Number(defaults),
+    lastUpdated: new Date(),
+  };
 
   return NextResponse.json<ApiResponse<ReputationScore>>({ success: true, data: record });
 });

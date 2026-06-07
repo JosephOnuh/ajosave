@@ -192,6 +192,7 @@ export async function invokeContractPayout(contractId: string): Promise<string> 
   // payout() takes no args — admin auth is checked inside the contract
   // @ts-expect-error — method generated from contract ABI at runtime
   const assembled = await client.payout();
+  
   // Wrap the inner transaction in a platform fee bump so users need no XLM
   const innerXdr: string = assembled.toXDR();
   return wrapWithFeeBump(innerXdr);
@@ -223,6 +224,7 @@ export async function invokeContractSetPayoutOrder(
   // set_payout_order(order: Vec<u32>)
   // @ts-expect-error — method generated from contract ABI at runtime
   const assembled = await client.set_payout_order({ order: payoutOrder });
+  
   // Wrap the inner transaction in a platform fee bump so users need no XLM
   const innerXdr: string = assembled.toXDR();
   return wrapWithFeeBump(innerXdr);

@@ -40,6 +40,6 @@ export const DELETE = withErrorHandler(async (_req: NextRequest, ctx: unknown) =
   }
   const { params } = ctx as { params: { id: string } };
   const userId = (session.user as { id: string }).id;
-  await deleteCircle(params.id, userId);
-  return NextResponse.json<ApiResponse<{ deleted: true }>>({ success: true, data: { deleted: true } });
+  const circle = await deleteCircle(params.id, userId);
+  return NextResponse.json<ApiResponse<Circle>>({ success: true, data: circle });
 });

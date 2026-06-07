@@ -18,6 +18,9 @@ import type { Metadata } from "next";
 import { LazyCircleChat } from "@/components/circle/LazyCircleChat";
 import { CircleWaitlist } from "@/components/circle/CircleWaitlist";
 import { CircleCompletionScreen } from "@/components/circle/CircleCompletionScreen";
+import { ContributeButton } from "@/components/circle/ContributeButton";
+import { DisputeForm } from "@/components/circle/DisputeForm";
+import { EarlyExitButton } from "@/components/circle/EarlyExitButton";
 import styles from "./page.module.css";
 
 interface Props {

@@ -9,7 +9,7 @@ import logger from "@/lib/logger";
 import { runWithCorrelationId } from "@/lib/correlation";
 import { sanitizeBody } from "@/lib/sanitize";
 
-type Handler = (_req: NextRequest, _ctx?: unknown) => Promise<NextResponse>;
+type Handler = (_req: NextRequest, _ctx?: any) => Promise<NextResponse>;
 
 export function withAuth(handler: Handler): Handler {
   return async (req, ctx) => {

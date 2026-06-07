@@ -4,7 +4,7 @@ import { withAdminAuth, withErrorHandler } from "@/server/middleware";
 import type { ApiResponse } from "@/types";
 
 export const GET = withErrorHandler(
-  withAdminAuth(async (req: NextRequest) => {
+  withAdminAuth(async (_req: NextRequest) => {
     const [dailyAnalytics, circleAnalytics, smsDelivery] = await Promise.all([
       getDailyAnalytics(),
       adminGetPerCircleAnalytics(),

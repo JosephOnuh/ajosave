@@ -46,7 +46,7 @@ export function PayoutsTable({ payouts }: PayoutsTableProps) {
               <td>{parseFloat(payout.amountUsdc).toFixed(2)}</td>
               <td>
                 <a
-                  href={`https://stellar.expert/explorer/testnet/tx/${payout.txHash}`}
+                  href={`${STELLAR_EXPLORER}/${payout.txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={styles.monospace}

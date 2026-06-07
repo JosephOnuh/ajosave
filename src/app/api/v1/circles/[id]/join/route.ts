@@ -19,8 +19,8 @@ export const POST = withRateLimit(withErrorHandler(async (req: NextRequest, ctx:
     );
   }
 
-  const userId = (session.user as { id: string }).id;
   const { params } = ctx as { params: { id: string } };
+  const userId = (session.user as { id: string }).id;
   const body = await req.json();
   const parsed = joinCircleSchema.safeParse({ ...body, circleId: params.id });
   if (!parsed.success) {

@@ -4,11 +4,7 @@ import "@/styles/globals.css";
 import "@/styles/components.css";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
-import { SessionProvider } from "next-auth/react";
-import { Analytics } from "@vercel/analytics/react";
-import { SentryUserContext } from "@/components/SentryUserContext";
-import { PWAProvider } from "@/components/PWAProvider";
-import { IntlProvider } from "@/components/IntlProvider";
+import { Providers } from "@/components/Providers";
 import { cookies } from "next/headers";
 import { locales, defaultLocale, type Locale } from "@/i18n";
 
@@ -55,17 +51,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
       </head>
       <body>
-        <SessionProvider>
-          <IntlProvider locale={locale} messages={messages}>
-            <a href="#main-content" className="skip-link">Skip to main content</a>
-            <SentryUserContext />
-            <Navbar />
-            <main id="main-content">{children}</main>
-            <Footer />
-            <PWAProvider />
-            <Analytics />
-          </IntlProvider>
-        </SessionProvider>
+        <Providers locale={locale} messages={messages}>
+          <a href="#main-content" className="skip-link">Skip to main content</a>
+          <Navbar />
+          <main id="main-content">{children}</main>
+          <Footer />
+        </Providers>
       </body>
     </html>
   );

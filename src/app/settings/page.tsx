@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSession } from "next-auth/react";
-import { Button } from "@/components/ui/Button";
 import { DeleteAccountButton } from "@/components/ui/DeleteAccountButton";
 import styles from "./page.module.css";
 

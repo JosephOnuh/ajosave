@@ -15,6 +15,24 @@ export interface User {
   createdAt: Date;
 }
 
+export interface ReputationScore {
+  userId: string;
+  score: number;
+  level: string;
+  onTimeContributions: number;
+  circlesCompleted: number;
+  defaults: number;
+  updatedAt: Date;
+}
+
+export interface Referral {
+  id: string;
+  referrerId: string;
+  referredUserId: string;
+  code: string;
+  createdAt: Date;
+}
+
 // ─── Circle ───────────────────────────────────────────────────────────────────
 export type CircleStatus = "open" | "active" | "completed" | "cancelled" | "paused";
 export type CircleType = "public" | "private";
@@ -144,40 +162,6 @@ export interface ApiError {
   success: false;
   error: string;
   code?: string;
+  data?: any;
 }
 export type ApiResponse<T> = ApiSuccess<T> | ApiError;
-
-// ─── Dispute ──────────────────────────────────────────────────────────────────
-export interface Dispute {
-  id: string;
-  contributionId: string;
-  memberId: string;
-  circleId: string;
-  paystackReference?: string;
-  reason: string;
-  status: "open" | "resolved" | "rejected";
-  resolutionNotes?: string;
-  resolvedBy?: string;
-  createdAt: Date;
-  resolvedAt?: Date;
-}
-
-// ─── Referral ─────────────────────────────────────────────────────────────────
-export interface Referral {
-  id: string;
-  referrerId: string;
-  referredUserId: string;
-  code: string;
-  createdAt: Date;
-}
-
-// ─── Reputation ───────────────────────────────────────────────────────────────
-export interface ReputationScore {
-  userId: string;
-  score: number;
-  level: string;
-  onTimeContributions: number;
-  circlesCompleted: number;
-  defaults: number;
-  updatedAt: Date;
-}

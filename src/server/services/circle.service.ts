@@ -4,7 +4,7 @@ import type { Circle, Member, CircleStatus, CycleFrequency } from "@/types";
 import type { CreateCircleInput } from "@/types/schemas";
 import { getFiatPerUsdc } from "@/lib/fx";
 import { deployAjoContract } from "@/lib/soroban";
-import { sendUsdcPayment } from "@/lib/stellar";
+import { sendUsdcPayment, validateStellarRecipient } from "@/lib/stellar";
 import { notifyCircleCancelled, notifyCirclePaused, notifyCircleResumed } from "./notification.service";
 import { getRedis } from "@/lib/redis";
 import logger from "@/lib/logger";
@@ -779,8 +779,8 @@ export async function leaveCircle(
     const nextUser = await getFirstWaitlistMember(circleId);
     if (nextUser) {
       const { notifyWaitlistSpotOpened } = await import("./notification.service");
-      notifyWaitlistSpotOpened(nextUser, circleName).catch((err) =>
-        console.error(`[leaveCircle] SMS notification failed for ${nextUser}:`, err)
+      notifyWaitlistSpotOpened(nextUser, circleName).catch((err: any) =>
+        console.error(`[leaveCircle] Waitlist notification failed for ${nextUser}:`, err)
       );
     }
   } catch (err) {
@@ -793,12 +793,19 @@ export async function leaveCircle(
  * Only the creator or an admin can delete. Deleted circles are hidden from all
  * public queries but remain in the database for historical reference.
  */
-export async function deleteCircle(circleId: string, requesterId: string, isAdmin = false): Promise<void> {
+export async function deleteCircle(circleId: string, requesterId: string, isAdmin = false): Promise<Circle> {
   const { rows } = await query<{ creator_id: string }>(
     "SELECT creator_id FROM circles WHERE id = $1 AND deleted_at IS NULL",
     [circleId]
   );
   if (!rows[0]) throw new Error("Circle not found");
   if (!isAdmin && rows[0].creator_id !== requesterId) throw new Error("Only the creator can delete this circle");
-  await query("UPDATE circles SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1", [circleId]);
+  
+  const { rows: updatedRows } = await query<Circle>(
+    `UPDATE circles SET deleted_at = NOW(), updated_at = NOW() 
+     WHERE id = $1 
+     RETURNING ${CIRCLE_SELECT}`,
+    [circleId]
+  );
+  return updatedRows[0];
 }

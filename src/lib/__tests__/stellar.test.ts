@@ -37,7 +37,7 @@ jest.mock("@/server/config", () => ({
 describe("sendUsdcPayment retry logic", () => {
   const destination = "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5";
   const amount = "10.0000000";
-  const mockAccount = () => new Account(destination, "1");
+  const _mockAccountFn = () => new Account(destination, "1");
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -51,11 +51,11 @@ describe("sendUsdcPayment retry logic", () => {
 
   it("succeeds on the first attempt", async () => {
     const mockAccount = {
-          sequenceNumber: () => "1",
-          accountId: () => "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5",
-          incrementSequenceNumber: () => {},
-          balances: [{ asset_type: "credit_alphanum4", asset_code: "USDC", asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", balance: "100.0000000" }],
-        };
+      sequenceNumber: () => "1",
+      accountId: () => "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5",
+      incrementSequenceNumber: () => {},
+      balances: [{ asset_type: "credit_alphanum4", asset_code: "USDC", asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", balance: "100.0000000" }],
+    };
     (horizonServer.loadAccount as jest.Mock) = jest.fn().mockResolvedValue(mockAccount);
     (horizonServer.submitTransaction as jest.Mock) = jest.fn().mockResolvedValue({ hash: "success-hash" });
 
@@ -69,11 +69,11 @@ describe("sendUsdcPayment retry logic", () => {
 
   it("retries on transient failure and eventually succeeds", async () => {
     const mockAccount = {
-          sequenceNumber: () => "1",
-          accountId: () => "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5",
-          incrementSequenceNumber: () => {},
-          balances: [{ asset_type: "credit_alphanum4", asset_code: "USDC", asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", balance: "100.0000000" }],
-        };
+      sequenceNumber: () => "1",
+      accountId: () => "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5",
+      incrementSequenceNumber: () => {},
+      balances: [{ asset_type: "credit_alphanum4", asset_code: "USDC", asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", balance: "100.0000000" }],
+    };
     (horizonServer.loadAccount as jest.Mock) = jest.fn().mockResolvedValue(mockAccount);
     
     // First attempt fails with 503
@@ -103,11 +103,11 @@ describe("sendUsdcPayment retry logic", () => {
 
   it("stops retrying on fatal error (tx_bad_seq)", async () => {
     const mockAccount = {
-          sequenceNumber: () => "1",
-          accountId: () => "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5",
-          incrementSequenceNumber: () => {},
-          balances: [{ asset_type: "credit_alphanum4", asset_code: "USDC", asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", balance: "100.0000000" }],
-        };
+      sequenceNumber: () => "1",
+      accountId: () => "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5",
+      incrementSequenceNumber: () => {},
+      balances: [{ asset_type: "credit_alphanum4", asset_code: "USDC", asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", balance: "100.0000000" }],
+    };
     (horizonServer.loadAccount as jest.Mock) = jest.fn().mockResolvedValue(mockAccount);
     
     const errorBadSeq: any = new Error("Transaction Failed");
@@ -131,11 +131,11 @@ describe("sendUsdcPayment retry logic", () => {
 
   it("exhausts retries on persistent transient failures", async () => {
     const mockAccount = {
-          sequenceNumber: () => "1",
-          accountId: () => "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5",
-          incrementSequenceNumber: () => {},
-          balances: [{ asset_type: "credit_alphanum4", asset_code: "USDC", asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", balance: "100.0000000" }],
-        };
+      sequenceNumber: () => "1",
+      accountId: () => "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5",
+      incrementSequenceNumber: () => {},
+      balances: [{ asset_type: "credit_alphanum4", asset_code: "USDC", asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", balance: "100.0000000" }],
+    };
     (horizonServer.loadAccount as jest.Mock) = jest.fn().mockResolvedValue(mockAccount);
     
     const errorTimeout: any = new Error("Network timeout");

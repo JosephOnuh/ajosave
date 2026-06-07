@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import * as vercelAnalytics from "@vercel/analytics";
+import { track } from "@vercel/analytics";
 import { useToast } from "@/components/ui/Toast";
 import { useExchangeRate } from "@/hooks/useExchangeRate";
 import styles from "./ContributeButton.module.css";
@@ -36,8 +36,10 @@ export function ContributeButton({ circleId, circleName, amountNgn, cycleFrequen
       const res = await fetch(`/api/circles/${circleId}/contribute`, { method: "POST" });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
+      
       // Track contribution initiation (no PII)
-      try { vercelAnalytics.track("contribution_made", { circleId, amountNgn }); } catch {}
+      try { track("contribution_made", { circleId, amountNgn }); } catch {}
+      
       // Show fee info before redirecting
       if (json.data.platformFee > 0) {
         setFeeInfo(json.data);

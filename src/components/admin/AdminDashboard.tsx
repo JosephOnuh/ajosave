@@ -1,19 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import type { AdminCircleRow, AdminPayoutRow } from "@/server/services/admin.service";
 import type { Dispute } from "@/types";
-import { CirclesTable } from "./CirclesTable";
-import { PayoutsTable } from "./PayoutsTable";
-import { AnalyticsDashboard } from "./AnalyticsDashboard";
 import { DisputeList } from "./DisputeList";
 import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
 import { usePolling } from "@/hooks/usePolling";
 import styles from "./admin.module.css";
 
-const CirclesTable = lazy(() => import("./CirclesTable").then((mod) => ({ default: mod.CirclesTable })));
-const PayoutsTable = lazy(() => import("./PayoutsTable").then((mod) => ({ default: mod.PayoutsTable })));
-const AnalyticsDashboard = lazy(() => import("./AnalyticsDashboard").then((mod) => ({ default: mod.AnalyticsDashboard })));
+const LazyCirclesTable = lazy(() => import("./CirclesTable").then((mod) => ({ default: mod.CirclesTable })));
+const LazyPayoutsTable = lazy(() => import("./PayoutsTable").then((mod) => ({ default: mod.PayoutsTable })));
+const LazyAnalyticsDashboard = lazy(() => import("./AnalyticsDashboard").then((mod) => ({ default: mod.AnalyticsDashboard })));
 
 type Tab = "circles" | "payouts" | "disputes" | "users" | "analytics";
 
@@ -48,6 +45,7 @@ export function AdminDashboard() {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [newItemsCount, setNewItemsCount] = useState(0);
 
+  // Fetch functions
   const fetchCircles = useCallback(async () => {
     const res = await fetch("/api/admin/circles");
     const json = await res.json();
@@ -83,8 +81,11 @@ export function AdminDashboard() {
     return json.data as AdminUser[];
   }, []);
 
-  useEffect(() => { fetchStats(); }, [fetchStats]);
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
+  // Polling for circles
   const { isConnected: circlesConnected, error: circlesError } = usePolling({
     fetchFn: fetchCircles,
     interval: 5000,
@@ -102,6 +103,7 @@ export function AdminDashboard() {
     onError: (err) => { setError(err.message); setLoading(false); },
   });
 
+  // Polling for payouts
   const { isConnected: payoutsConnected, error: payoutsError } = usePolling({
     fetchFn: fetchPayouts,
     interval: 5000,
@@ -119,6 +121,7 @@ export function AdminDashboard() {
     onError: (err) => { setError(err.message); setLoading(false); },
   });
 
+  // Polling for disputes
   const { isConnected: disputesConnected, error: disputesError } = usePolling({
     fetchFn: fetchDisputes,
     interval: 10000,
@@ -136,8 +139,14 @@ export function AdminDashboard() {
     if (tab !== "users") return;
     setLoading(true);
     fetchUsers(userSearch)
-      .then((data) => { setUsers(data); setLoading(false); })
-      .catch((err) => { setError(err.message); setLoading(false); });
+      .then((data) => {
+        setUsers(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setLoading(false);
+      });
   }, [tab, userSearch, fetchUsers]);
 
   const isConnected =
@@ -151,11 +160,15 @@ export function AdminDashboard() {
     tab === "disputes" ? disputesError : null;
 
   useEffect(() => {
-    setError(currentError?.message ?? null);
+    if (currentError) {
+      setError(currentError.message);
+    } else {
+      setError(null);
+    }
   }, [currentError]);
 
   return (
-    <>
+    <div className={styles.adminContainer}>
       {/* Platform Stats */}
       {stats && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "var(--space-4)", marginBottom: "var(--space-8)" }}>
@@ -174,7 +187,7 @@ export function AdminDashboard() {
         </div>
       )}
 
-      <div className={styles.header}>
+      <div className={styles.topBar}>
         <div className={styles.tabs} role="tablist" aria-label="Admin sections">
           {(["circles", "payouts", "disputes", "users", "analytics"] as Tab[]).map((t) => (
             <button
@@ -197,72 +210,76 @@ export function AdminDashboard() {
 
       {newItemsCount > 0 && (
         <div className={styles.newItemsBanner} role="status" aria-live="polite">
-          🎉 {newItemsCount} new {tab === "circles" ? "circle" : "payout"}{newItemsCount !== 1 ? "s" : ""} added!
+          🎉 {newItemsCount} new {tab === "circles" ? "circle" : "payout"}
+          {newItemsCount !== 1 ? "s" : ""} added!
         </div>
       )}
 
       {error && <div className={styles.error} role="alert">{error}</div>}
 
-      {tab === "analytics" ? (
-        <Suspense fallback={<div className={styles.loading}>Loading analytics dashboard…</div>}>
-          <AnalyticsDashboard />
-        </Suspense>
-      ) : loading ? (
-        <div className={styles.loading}>Loading…</div>
-      ) : tab === "circles" ? (
-        <div role="tabpanel">
-          <CirclesTable circles={circles} />
-        </div>
-      ) : tab === "payouts" ? (
-        <div role="tabpanel">
-          <PayoutsTable payouts={payouts} />
-        </div>
-      ) : tab === "disputes" ? (
-        <div role="tabpanel">
+      <div className={styles.tableCard}>
+        {loading && circles.length === 0 && payouts.length === 0 && disputes.length === 0 && users.length === 0 ? (
+          <div className={styles.loadingState}>
+            <div className="btn-spinner" />
+            <span>Loading admin data...</span>
+          </div>
+        ) : tab === "analytics" ? (
+          <Suspense fallback={<div className={styles.loadingState}><div className="btn-spinner" /><span>Loading analytics...</span></div>}>
+            <LazyAnalyticsDashboard />
+          </Suspense>
+        ) : tab === "circles" ? (
+          <Suspense fallback={<div className={styles.loadingState}><div className="btn-spinner" /><span>Loading circles...</span></div>}>
+            <LazyCirclesTable circles={circles} />
+          </Suspense>
+        ) : tab === "payouts" ? (
+          <Suspense fallback={<div className={styles.loadingState}><div className="btn-spinner" /><span>Loading payouts...</span></div>}>
+            <LazyPayoutsTable payouts={payouts} />
+          </Suspense>
+        ) : tab === "disputes" ? (
           <DisputeList disputes={disputes} />
-        </div>
-      ) : (
-        <div role="tabpanel">
-          <div style={{ marginBottom: "var(--space-4)" }}>
-            <input
-              type="search"
-              placeholder="Search by name, phone, or email…"
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-              style={{ padding: "var(--space-3)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", width: "100%", maxWidth: 400, background: "var(--color-bg)", color: "var(--color-text-primary)", fontSize: "var(--text-sm)" }}
-            />
-          </div>
-          <div className={styles.tableContainer}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Reputation</th>
-                  <th>Joined</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.displayName}</td>
-                    <td>{u.phone}</td>
-                    <td>{u.email ?? "—"}</td>
-                    <td>{u.role}</td>
-                    <td>{u.reputationScore}</td>
-                    <td>{new Date(u.createdAt).toLocaleDateString()}</td>
+        ) : (
+          <div role="tabpanel">
+            <div style={{ marginBottom: "var(--space-4)" }}>
+              <input
+                type="search"
+                placeholder="Search by name, phone, or email…"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                style={{ padding: "var(--space-3)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", width: "100%", maxWidth: 400, background: "var(--color-bg)", color: "var(--color-text-primary)", fontSize: "var(--text-sm)" }}
+              />
+            </div>
+            <div className={styles.tableContainer}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Reputation</th>
+                    <th>Joined</th>
                   </tr>
-                ))}
-                {users.length === 0 && (
-                  <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--color-text-secondary)" }}>No users found.</td></tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id}>
+                      <td>{u.displayName}</td>
+                      <td>{u.phone}</td>
+                      <td>{u.email ?? "—"}</td>
+                      <td>{u.role}</td>
+                      <td>{u.reputationScore}</td>
+                      <td>{new Date(u.createdAt).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                  {users.length === 0 && (
+                    <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--color-text-secondary)" }}>No users found.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
-    </>
+        )}
+      </div>
+    </div>
   );
 }

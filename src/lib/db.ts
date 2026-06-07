@@ -20,9 +20,9 @@
 import { Pool, type QueryResult, type QueryResultRow } from "pg";
 import { serverConfig } from "@/server/config";
 
-const DB_POOL_SIZE = parseInt(process.env.DB_POOL_SIZE ?? "10", 10);
-const DB_CONNECTION_TIMEOUT_MS = parseInt(process.env.DB_CONNECTION_TIMEOUT_MS ?? "5000", 10);
-const DB_IDLE_TIMEOUT_MS = parseInt(process.env.DB_IDLE_TIMEOUT_MS ?? "30000", 10);
+const _DB_POOL_SIZE = parseInt(process.env.DB_POOL_SIZE ?? "10", 10);
+const _DB_CONNECTION_TIMEOUT_MS = parseInt(process.env.DB_CONNECTION_TIMEOUT_MS ?? "5000", 10);
+const _DB_IDLE_TIMEOUT_MS = parseInt(process.env.DB_IDLE_TIMEOUT_MS ?? "30000", 10);
 const DB_MAX_RETRIES = parseInt(process.env.DB_MAX_RETRIES ?? "3", 10);
 const DB_RETRY_DELAY_MS = parseInt(process.env.DB_RETRY_DELAY_MS ?? "500", 10);
 
@@ -47,20 +47,20 @@ function getPool(): Pool {
     });
 
     // Pool event listeners for monitoring and debugging
-    pool.on("connect", (client) => {
+    pool.on("connect", (_client) => {
       console.log("[db] New client connected to pool");
     });
 
-    pool.on("acquire", (client) => {
+    pool.on("acquire", (_client) => {
       console.log("[db] Client acquired from pool");
     });
 
-    pool.on("remove", (client) => {
+    pool.on("remove", (_client) => {
       console.log("[db] Client removed from pool");
     });
 
-    pool.on("error", (err, client) => {
-      console.error("[db] Unexpected pool error:", err);
+    pool.on("error", (_err, _client) => {
+      console.error("[db] Unexpected pool error:", _err);
       // Don't exit process - let the pool handle reconnection
     });
 
@@ -104,6 +104,8 @@ export function getPoolStats() {
   };
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * Execute a parameterized query with automatic retry on transient connection errors.
  * @param text  SQL with $1, $2, … placeholders — never interpolate user input
@@ -137,7 +139,7 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
  * Rolls back automatically on error.
  */
 export async function transaction<T>(
-  fn: (q: typeof query) => Promise<T>
+  fn: (_q: typeof query) => Promise<T>
 ): Promise<T> {
   const client = await getPool().connect();
   try {

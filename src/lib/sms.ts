@@ -144,3 +144,11 @@ export async function sendCircleResumedSms(
   const message = `Ajosave: The circle "${circleName}" has been resumed. Normal schedule and payouts have been restored.`;
   await sendSms(phone, message);
 }
+
+export async function sendWaitlistSpotOpenedSms(
+  phone: string,
+  circleName: string
+): Promise<void> {
+  const message = `Ajosave: A spot has opened up in "${circleName}"! Join now before it fills up again.`;
+  await sendSms(phone, message);
+}

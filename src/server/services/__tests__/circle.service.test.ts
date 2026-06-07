@@ -4,7 +4,7 @@ import {
   listOpenCircles,
   getCirclesByUser,
   approveJoinRequest,
-  rejectJoinRequest,
+  _rejectJoinRequest,
   shuffleAndPersistPositions,
   cancelCircle,
 } from "@/server/services/circle.service";
@@ -163,6 +163,8 @@ describe("circle.service", () => {
       contributionCurrency: "NGN" as const,
       maxMembers: 5,
       cycleFrequency: "monthly" as const,
+      circleType: "public" as const,
+      gracePeriodHours: 24,
       payoutMethod: "fixed" as const,
     };
 

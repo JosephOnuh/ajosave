@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { createCircleSchema, type CreateCircleInput } from "@/types/schemas";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./CreateCircleForm.module.css";
 import { TemplateSelector } from "./TemplateSelector";
