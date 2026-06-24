@@ -38,7 +38,10 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   // Control referrer information
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  // HSTS: 2-year max-age with preload — submitted to HSTS preload list
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+  // Restrict access to browser features not used by this app
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
 const nextConfig = {
@@ -49,15 +52,6 @@ const nextConfig = {
   },
   async headers() {
     return [
-      {
-        source: "/(.*)",
-        headers: [
-          {
-            key: "Strict-Transport-Security",
-            value: "max-age=63072000; includeSubDomains; preload",
-          },
-        ],
-      },
       {
         source: "/(.*)",
         headers: securityHeaders,
