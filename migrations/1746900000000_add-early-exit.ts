@@ -16,11 +16,12 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       onDelete: "CASCADE",
     },
     user_id: {
-      type: "uuid",
+      type: "varchar(255)",
       notNull: true,
       references: "users(id)",
       onDelete: "CASCADE",
     },
+
     penalty_percent: { type: "numeric(5,2)", notNull: true },
     penalty_usdc: { type: "numeric(20,7)", notNull: true },
     refund_usdc: { type: "numeric(20,7)", notNull: true },

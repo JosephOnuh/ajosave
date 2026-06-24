@@ -16,7 +16,6 @@ import { getCurrencySymbol, SupportedCurrency } from "@/lib/currency";
 import { format } from "date-fns";
 import type { Metadata } from "next";
 import { LazyCircleChat } from "@/components/circle/LazyCircleChat";
-import { CircleWaitlist } from "@/components/circle/CircleWaitlist";
 import { CircleCompletionScreen } from "@/components/circle/CircleCompletionScreen";
 import { ContributeButton } from "@/components/circle/ContributeButton";
 import { DisputeForm } from "@/components/circle/DisputeForm";
@@ -34,26 +33,31 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const symbol = getCurrencySymbol(circle.contributionCurrency as SupportedCurrency);
   const title = `${circle.name} | Ajosave`;
   const description = `Join ${circle.name} — a savings circle with ${symbol}${circle.contributionFiat.toLocaleString()} contributions every ${circle.cycleFrequency}. Powered by Stellar.`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.ajosave.app";
 
   return {
     title,
     description,
+    alternates: {
+      canonical: `${appUrl}/circles/${params.id}`,
+    },
     openGraph: {
       title,
       description,
-      url: `https://www.ajosave.app/circles/${params.id}`,
+      url: `${appUrl}/circles/${params.id}`,
       siteName: "Ajosave",
       type: "website",
-      images: [{ url: "/og-default.svg", width: 1200, height: 630, alt: title }],
+      images: [{ url: `${appUrl}/circles/${params.id}/opengraph-image`, width: 1200, height: 630, alt: title }],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: ["/og-default.svg"],
+      images: [`${appUrl}/circles/${params.id}/opengraph-image`],
     },
   };
 }
+
 
 // CircleDetailPage
 export default async function CircleDetailPage({ params }: Props) {
@@ -75,19 +79,33 @@ export default async function CircleDetailPage({ params }: Props) {
   const isActiveMember = members.some((m) => m.userId === userId && m.status === "active");
   const currencySymbol = getCurrencySymbol(circle.contributionCurrency as SupportedCurrency);
 
-  // Load waitlist status for this user
-  let isOnWaitlist = false;
-  let waitlistPosition: number | null = null;
-  if (userId) {
-    const { getWaitlistStatus } = await import("@/server/services/waitlist.service");
-    const status = await getWaitlistStatus(circle.id, userId);
-    isOnWaitlist = status.isOnWaitlist;
-    waitlistPosition = status.position;
-  }
+
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    "name": circle.name,
+    "description": `Join ${circle.name} — a rotating savings circle with ${currencySymbol}${circle.contributionFiat.toLocaleString()} contributions every ${circle.cycleFrequency}.`,
+    "provider": {
+      "@type": "Organization",
+      "name": "Ajosave",
+      "url": "https://www.ajosave.app",
+    },
+    "serviceType": "Rotating Savings and Credit Association",
+    "offers": {
+      "@type": "Offer",
+      "price": circle.contributionFiat,
+      "priceCurrency": circle.contributionCurrency,
+    },
+  };
 
   if (circle.status === "completed") {
     return (
       <div className={styles.page}>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
         <div className="container">
           <CircleCompletionScreen circle={circle} members={members} />
         </div>
@@ -97,7 +115,12 @@ export default async function CircleDetailPage({ params }: Props) {
 
   return (
     <div className={styles.page}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <div className="container">
+
         <div className={styles.header}>
           <div>
             <h1 className={styles.title}>{circle.name}</h1>
