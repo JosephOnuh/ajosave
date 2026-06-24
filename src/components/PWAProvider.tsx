@@ -7,22 +7,34 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
+const DISMISS_KEY = "ajosave:pwa-dismiss-until";
+const PROMPT_VISITS_KEY = "ajosave:pwa-visits";
+
 export function PWAProvider() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showBanner, setShowBanner] = useState(false);
 
   useEffect(() => {
-    // Register service worker
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
 
-    // Capture install prompt
+    const dismissedUntil = Number(localStorage.getItem(DISMISS_KEY) ?? 0);
+    const visited = Number(localStorage.getItem(PROMPT_VISITS_KEY) ?? 0) + 1;
+    localStorage.setItem(PROMPT_VISITS_KEY, String(visited));
+
+    if (dismissedUntil > Date.now()) {
+      return;
+    }
+
     const handler = (e: Event) => {
       e.preventDefault();
       setInstallPrompt(e as BeforeInstallPromptEvent);
-      setShowBanner(true);
+      if (visited >= 2) {
+        setShowBanner(true);
+      }
     };
+
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
@@ -32,6 +44,12 @@ export function PWAProvider() {
     await installPrompt.prompt();
     setShowBanner(false);
     setInstallPrompt(null);
+  };
+
+  const handleDismiss = () => {
+    const until = Date.now() + 1000 * 60 * 60 * 24 * 7;
+    localStorage.setItem(DISMISS_KEY, String(until));
+    setShowBanner(false);
   };
 
   if (!showBanner) return null;
@@ -45,10 +63,10 @@ export function PWAProvider() {
       boxShadow: "var(--shadow-md)", zIndex: 999, maxWidth: "calc(100vw - 2rem)",
     }}>
       <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-primary)" }}>
-        Add Ajosave to your home screen
+        Install Ajosave to use it faster on your device.
       </span>
       <button className="btn btn--primary btn--sm" onClick={handleInstall}>Install</button>
-      <button className="btn btn--ghost btn--sm" onClick={() => setShowBanner(false)} aria-label="Dismiss">✕</button>
+      <button className="btn btn--ghost btn--sm" onClick={handleDismiss} aria-label="Dismiss">✕</button>
     </div>
   );
 }
