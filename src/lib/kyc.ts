@@ -13,7 +13,7 @@
  *   SMILE_API_KEY       — Smile Identity API key (used for HMAC verification)
  *   SMILE_CALLBACK_URL  — full URL to /api/v1/kyc/webhook
  */
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { query } from "./db";
 
 const BASE_URL = "https://testapi.smileidentity.com/v1";
@@ -76,7 +76,12 @@ export async function handleKycWebhook(
     .update(`${payload.timestamp}:${partnerId}`)
     .digest("base64");
 
-  if (expected !== payload.signature) {
+  const expectedBuf = Buffer.from(expected);
+  const receivedBuf = Buffer.from(payload.signature);
+  if (
+    expectedBuf.length !== receivedBuf.length ||
+    !timingSafeEqual(expectedBuf, receivedBuf)
+  ) {
     throw new Error("Invalid Smile Identity webhook signature");
   }
 
