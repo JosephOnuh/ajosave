@@ -51,7 +51,7 @@
 .item.current .cycle {
   background: var(--color-brand-primary);
   border-color: var(--color-brand-primary);
-  color: #fff;
+  color: var(--color-on-brand);
 }
 
 .item.past .cycle {

@@ -82,7 +82,7 @@
   z-index: 9999;
   padding: var(--space-3) var(--space-5);
   background: var(--color-error);
-  color: #fff;
+  color: var(--color-on-brand);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
