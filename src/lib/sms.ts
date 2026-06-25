@@ -131,3 +131,9 @@ export async function sendCircleResumedSms(
   const message = `Ajosave: The circle "${circleName}" has been resumed. Normal schedule and payouts have been restored.`;
   await sendSms(phone, message);
 }
+
+export async function sendLockoutNotificationSms(phone: string, lockoutExpiresAt: Date): Promise<void> {
+  const time = lockoutExpiresAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC', timeZoneName: 'short' });
+  const message = `Ajosave Security Alert: Your account was locked due to multiple failed login attempts. Lockout expires at ${time}. If this wasn't you, contact support@ajosave.app immediately.`;
+  await sendSms(phone, message);
+}

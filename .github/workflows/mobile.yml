@@ -1,0 +1,128 @@
+name: Mobile Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    name: Android Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: npm }
+      - run: npm ci
+      - name: Build Next.js static export
+        run: npm run build:mobile
+        env:
+          NEXT_PUBLIC_APP_URL: https://www.ajosave.app
+          NEXT_PUBLIC_APP_NAME: Ajosave
+          NEXTAUTH_URL: https://www.ajosave.app
+          NEXTAUTH_SECRET: ci-placeholder
+          DATABASE_URL: postgresql://user:pass@localhost/ajosave
+          STELLAR_NETWORK: testnet
+          STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
+          STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+          STELLAR_SERVER_SECRET_KEY: SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+          USDC_ISSUER: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+          USDC_ASSET_CODE: USDC
+          PAYSTACK_SECRET_KEY: sk_test_placeholder
+          TERMII_API_KEY: placeholder
+          REDIS_URL: redis://localhost:6379
+          CRON_SECRET: placeholder
+      - name: Install Capacitor CLI
+        run: npx cap sync android
+      - uses: actions/setup-java@v4
+        with: { java-version: '17', distribution: adoptium }
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties') }}
+      - name: Build Android APK (debug)
+        working-directory: android
+        run: ./gradlew assembleDebug
+      - name: Build Android APK (release)
+        if: github.ref == 'refs/heads/main'
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > ajosave.keystore
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$PWD/ajosave.keystore \
+            -Pandroid.injected.signing.store.password="$ANDROID_STORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: android/app/build/outputs/apk/**/*.apk
+          retention-days: 30
+
+  build-ios:
+    name: iOS Build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: npm }
+      - run: npm ci
+      - name: Build Next.js static export
+        run: npm run build:mobile
+        env:
+          NEXT_PUBLIC_APP_URL: https://www.ajosave.app
+          NEXT_PUBLIC_APP_NAME: Ajosave
+          NEXTAUTH_URL: https://www.ajosave.app
+          NEXTAUTH_SECRET: ci-placeholder
+          DATABASE_URL: postgresql://user:pass@localhost/ajosave
+          STELLAR_NETWORK: testnet
+          STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
+          STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+          STELLAR_SERVER_SECRET_KEY: SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+          USDC_ISSUER: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
+          USDC_ASSET_CODE: USDC
+          PAYSTACK_SECRET_KEY: sk_test_placeholder
+          TERMII_API_KEY: placeholder
+          REDIS_URL: redis://localhost:6379
+          CRON_SECRET: placeholder
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+      - name: Import signing certificate
+        if: github.ref == 'refs/heads/main'
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          echo "$IOS_CERTIFICATE_BASE64" | base64 -d > certificate.p12
+          echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 -d > profile.mobileprovision
+          security create-keychain -p "" build.keychain
+          security import certificate.p12 -k build.keychain -P "$IOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-keychain-settings -lut 21600 build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+      - name: Build iOS (xcodebuild)
+        run: |
+          xcodebuild -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/App.xcarchive \
+            archive CODE_SIGNING_ALLOWED=NO
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-archive
+          path: build/App.xcarchive
+          retention-days: 30

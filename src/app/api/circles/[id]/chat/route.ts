@@ -5,6 +5,7 @@ import { query } from "@/lib/db";
 import { withErrorHandler, withRateLimit } from "@/server/middleware";
 import { getMessages, postMessage } from "@/server/services/chat.service";
 import { broadcastChatMessage } from "@/server/websocket";
+import { notifyNewChatMessage } from "@/server/services/notification.service";
 import type { ApiResponse, CircleMessage } from "@/types";
 
 // ─── GET /api/circles/[id]/chat ───────────────────────────────────────────────
@@ -121,6 +122,9 @@ export const POST = withErrorHandler(
 
       // Fire-and-forget broadcast; a failed broadcast does not roll back the DB insert
       broadcastChatMessage(circleId, message);
+
+      // Fire-and-forget SMS notifications to circle members
+      notifyNewChatMessage(circleId, message.displayName, message.content);
 
       return NextResponse.json<ApiResponse<CircleMessage>>(
         { success: true, data: message },

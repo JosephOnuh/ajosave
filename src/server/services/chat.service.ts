@@ -64,3 +64,11 @@ export async function getMessages(
 
   return rows;
 }
+
+export async function deleteMessage(messageId: string, circleId: string): Promise<boolean> {
+  const { rowCount } = await query(
+    `DELETE FROM circle_messages WHERE id = $1 AND circle_id = $2`,
+    [messageId, circleId]
+  );
+  return (rowCount ?? 0) > 0;
+}

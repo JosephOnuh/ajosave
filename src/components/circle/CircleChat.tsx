@@ -11,6 +11,7 @@ interface CircleChatProps {
   circleId: string;
   isActiveMember: boolean;
   currentUserId: string;
+  isAdmin?: boolean;
 }
 
 const LIMIT = 50;
@@ -54,6 +55,7 @@ export function CircleChat({
   circleId,
   isActiveMember,
   currentUserId,
+  isAdmin = false,
 }: CircleChatProps) {
   const queryClient = useQueryClient();
 
@@ -186,6 +188,17 @@ export function CircleChat({
     }
   };
 
+  // ── Admin delete message ───────────────────────────────────────────────────
+  const handleDeleteMessage = async (messageId: string) => {
+    const res = await fetch(`/api/admin/circles/${circleId}/messages/${messageId}`, {
+      method: 'DELETE',
+    });
+    if (res.ok) {
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      setExtraMessages((prev) => prev.filter((m) => m.id !== messageId));
+    }
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <section className={styles.container} aria-label="Circle chat">
@@ -255,6 +268,16 @@ export function CircleChat({
                 >
                   {format(new Date(msg.createdAt), "MMM d, h:mm a")}
                 </time>
+                {isAdmin && (
+                  <button
+                    className={styles.deleteBtn}
+                    onClick={() => handleDeleteMessage(msg.id)}
+                    aria-label={`Delete message by ${msg.displayName}`}
+                    title="Delete message"
+                  >
+                    ×
+                  </button>
+                )}
               </header>
               <p className={styles.content}>{msg.content}</p>
             </article>

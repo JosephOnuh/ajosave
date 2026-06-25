@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import {
+  sendSms,
   sendPayoutReminderSms,
   sendPayoutProcessedSms,
   sendMissedContributionSms,
@@ -11,7 +12,9 @@ import {
   sendCircleCancelledNoRefundSms,
   sendCirclePausedSms,
   sendCircleResumedSms,
+  sendLockoutNotificationSms,
 } from "@/lib/sms";
+import { getRedis } from "@/lib/redis";
 import type { User } from "@/types";
 
 async function canSendSms(userId: string): Promise<boolean> {
@@ -278,6 +281,50 @@ export async function notifyCircleResumed(
       await sendCircleResumedSms(phone, circleName);
     } catch (error) {
       console.error(`Failed to send resume notification to ${userId}:`, error);
+    }
+  });
+  await Promise.allSettled(notifications);
+}
+
+/**
+ * Notify a phone number when their account is locked out due to too many failed attempts.
+ * Rate-limited to 1 SMS per phone per 30 minutes to prevent SMS flooding.
+ */
+export async function notifyAccountLockout(phone: string, lockoutExpiresAt: Date): Promise<void> {
+  const redis = await getRedis();
+  const rateLimitKey = `lockout_sms:${phone}`;
+  const alreadySent = await redis.get(rateLimitKey);
+  if (alreadySent) return;
+
+  await redis.set(rateLimitKey, "1", { EX: 30 * 60 });
+  try {
+    await sendLockoutNotificationSms(phone, lockoutExpiresAt);
+  } catch (error) {
+    console.error(`Failed to send lockout notification to ${phone}:`, error);
+  }
+}
+
+/**
+ * Notify active circle members when a new chat message is sent
+ */
+export async function notifyNewChatMessage(
+  circleId: string,
+  senderDisplayName: string,
+  messagePreview: string
+): Promise<void> {
+  const { rows } = await query<{ userId: string }>(
+    `SELECT user_id AS "userId" FROM members WHERE circle_id = $1 AND status = 'active'`,
+    [circleId]
+  );
+  const notifications = rows.map(async ({ userId }) => {
+    if (!(await canSendSms(userId))) return;
+    const phone = await getUserPhone(userId);
+    if (!phone) return;
+    try {
+      const preview = messagePreview.length > 50 ? messagePreview.slice(0, 47) + '...' : messagePreview;
+      await sendSms(phone, `Ajosave: ${senderDisplayName} sent a message in your circle: "${preview}"`);
+    } catch (err) {
+      console.error(`Failed to send chat notification to ${userId}:`, err);
     }
   });
   await Promise.allSettled(notifications);
