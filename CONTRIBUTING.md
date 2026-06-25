@@ -15,6 +15,7 @@ Thank you for your interest in Ajosave! This guide covers everything you need to
 - [Smart Contract Development](#smart-contract-development)
 - [Commit Convention](#commit-convention)
 - [Pull Request Process](#pull-request-process)
+- [Secret Handling](#secret-handling)
 - [Reporting Issues](#reporting-issues)
 
 ---
@@ -263,6 +264,59 @@ test(middleware): add rate limit tests
 5. PRs require **one approval** to merge. Security-sensitive contract changes require **two approvals**.
 
 6. Reference the issue in your PR description: `Closes #<issue-number>`.
+
+---
+
+## Secret Handling
+
+Ajosave uses [gitleaks](https://github.com/gitleaks/gitleaks) to prevent credentials from being committed. The configuration lives in `.gitleaks.toml`.
+
+### Rules enforced
+
+| Pattern | Examples |
+|---------|---------|
+| Stellar secret keys | 56-char base32 strings starting with `S` |
+| Generic API key assignments | `api_key = "..."` |
+| JWT tokens | `eyJ...` bearer tokens |
+| PEM private key headers | `-----BEGIN PRIVATE KEY-----` |
+
+### What you must never commit
+
+- Real Stellar secret keys (`STELLAR_SERVER_SECRET_KEY`, wallet seeds)
+- Paystack live secret keys (`sk_live_...`)
+- Database connection strings with real credentials
+- `NEXTAUTH_SECRET` values from production
+- Any `.env.local` or `.env.production` files
+
+### Approved placeholders (safe to commit)
+
+Use these exact strings for CI/build env vars that need a non-empty value:
+
+```
+NEXTAUTH_SECRET=ci-secret-placeholder
+STELLAR_SERVER_SECRET_KEY=SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+PAYSTACK_SECRET_KEY=sk_test_placeholder
+TERMII_API_KEY=placeholder
+CRON_SECRET=placeholder
+```
+
+### Local pre-commit hook
+
+After `npm install`, a pre-commit hook is automatically installed via husky. It runs `gitleaks protect --staged` before every commit.
+
+If gitleaks is not installed locally the hook warns but does not block the commit. Install it to enable local scanning:
+
+```bash
+# macOS
+brew install gitleaks
+
+# Linux
+curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz | tar -xz -C /usr/local/bin
+```
+
+### CI enforcement
+
+The `secret-scan` job in CI runs on every PR and push. It scans the full commit history with `gitleaks/gitleaks-action@v2`. **A detected secret will fail the build.** If you trigger a false positive, add an allowlist entry to `.gitleaks.toml` with a comment explaining why it is safe.
 
 ---
 

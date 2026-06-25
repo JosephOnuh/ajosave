@@ -1,0 +1,53 @@
+title = "Ajosave Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "stellar-secret-key"
+description = "Stellar secret key (starts with S, 56 chars, base32)"
+regex = '''\bS[A-Z2-7]{55}\b'''
+tags = ["stellar", "secret-key"]
+
+  [rules.allowlist]
+  regexes = [
+    '''\bSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\b''',
+  ]
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API key assignment"
+regex = '''(?i)(api[_-]?key|apikey)\s*[:=]\s*['"]?([A-Za-z0-9_\-]{20,})['"]?'''
+tags = ["api-key"]
+
+  [rules.allowlist]
+  regexes = [
+    '''placeholder''',
+    '''sk_test_placeholder''',
+    '''your[_-]?api[_-]?key''',
+  ]
+
+[[rules]]
+id = "jwt-token"
+description = "JWT token"
+regex = '''eyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+'''
+tags = ["jwt"]
+
+[[rules]]
+id = "private-key-header"
+description = "PEM private key header"
+regex = '''-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'''
+tags = ["private-key"]
+
+[allowlist]
+description = "Global allow-list for test/CI placeholders"
+regexes = [
+  '''ci-secret-placeholder''',
+  '''sk_test_placeholder''',
+  '''placeholder''',
+  '''\bSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\b''',
+]
+paths = [
+  '''.gitleaks.toml''',
+  '''CHANGELOG.md''',
+]
