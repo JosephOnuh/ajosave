@@ -23,7 +23,6 @@ const cspHeader = [
 ].join("; ");
 
 const securityHeaders = [
-  // Report-Only first — switch to Content-Security-Policy once violations are reviewed
   { key: "Content-Security-Policy-Report-Only", value: cspHeader },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -45,6 +44,7 @@ const nextConfig = {
             key: "Strict-Transport-Security",
             value: "max-age=63072000; includeSubDomains; preload",
           },
+          ...securityHeaders,
         ],
       },
     ];
@@ -60,14 +60,6 @@ const nextConfig = {
           },
         ]
       : [];
-  },
-  async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: securityHeaders,
-      },
-    ];
   },
 };
 
