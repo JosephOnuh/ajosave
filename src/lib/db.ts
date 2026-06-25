@@ -104,8 +104,6 @@ export function getPoolStats() {
   };
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 /**
  * Execute a parameterized query with automatic retry on transient connection errors.
  * @param text  SQL with $1, $2, … placeholders — never interpolate user input
