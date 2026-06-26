@@ -42,6 +42,7 @@ export type PayoutMethod = "fixed" | "randomized";
 export interface Circle {
   id: string;
   name: string;
+  description?: string;
   creatorId: string;
   contributionUsdc: string; // per-member per-cycle amount
   contributionFiat: number; // renamed from contributionNgn

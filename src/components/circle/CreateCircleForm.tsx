@@ -104,7 +104,20 @@ export function CreateCircleForm() {
       />
 
       <Input label="Circle Name" placeholder="e.g. Lagos Girls Monthly Ajo"
-        error={errors.name?.message} {...register("name")} />
+        error={errors.name?.message} {...register("name")} maxLength={100} />
+
+      <div className="input-group">
+        <label className="input-label" htmlFor="description">Description</label>
+        <textarea
+          id="description"
+          className="input"
+          placeholder="Tell others about your circle (optional)"
+          rows={3}
+          maxLength={500}
+          {...register("description")}
+        />
+        {errors.description && <p className={styles.fieldError}>{errors.description.message}</p>}
+      </div>
 
       <div className={styles.row}>
         <div className={styles.flex2}>
