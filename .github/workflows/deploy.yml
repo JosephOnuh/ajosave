@@ -14,6 +14,28 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: npm }
       - run: npm ci
+
+      # ── Store the previous successful deployment ID before we deploy ─────────
+      - name: Capture previous deployment ID
+        id: prev
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          PREV_ID=$(curl -sf \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v6/deployments?projectId=$VERCEL_PROJECT_ID&target=production&state=READY&limit=1" \
+            | jq -r '.deployments[0].uid // "none"')
+          echo "id=$PREV_ID" >> "$GITHUB_OUTPUT"
+          echo "Previous deployment ID: $PREV_ID"
+
+      # ── Append deployment history log ────────────────────────────────────────
+      - name: Record deployment in log
+        run: |
+          mkdir -p .deploy-logs
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) | sha=${{ github.sha }} | prev=${{ steps.prev.outputs.id }}" \
+            >> .deploy-logs/history.log
+
       - name: Build
         run: npm run build
         env:
@@ -38,10 +60,86 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
       - name: Deploy to Vercel
+        id: deploy
         uses: amondnet/vercel-action@v25
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: "--prod"
+
+      # ── Health check ─────────────────────────────────────────────────────────
+      - name: Health check
+        id: health
+        continue-on-error: true
+        env:
+          APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+        run: |
+          echo "Running health check against $APP_URL/api/v1/health ..."
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "$APP_URL/api/v1/health" || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "result=healthy" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "result=unhealthy" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      # ── Rollback on health check failure ─────────────────────────────────────
+      - name: Rollback to previous deployment
+        if: steps.health.outcome == 'failure' && steps.prev.outputs.id != 'none'
+        id: rollback
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PREV_DEPLOYMENT_ID: ${{ steps.prev.outputs.id }}
+        run: |
+          echo "Health check failed — rolling back to deployment $PREV_DEPLOYMENT_ID"
+          curl -sf -X POST \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.vercel.com/v13/deployments/$PREV_DEPLOYMENT_ID/promote" \
+            -d '{"target":"production"}'
+          echo "Rollback to $PREV_DEPLOYMENT_ID completed"
+
+      # ── Slack alert on rollback ───────────────────────────────────────────────
+      - name: Notify Slack of rollback
+        if: steps.health.outcome == 'failure'
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {
+              "text": ":rotating_light: *Production rollback triggered*",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":rotating_light: *Production rollback triggered*\n\nHealth check failed after deploying `${{ github.sha }}`.\nReverted to previous deployment: `${{ steps.prev.outputs.id }}`\n\n*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>\n*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      # ── Fail the job if health check failed (after rollback attempt) ──────────
+      - name: Fail job after rollback
+        if: steps.health.outcome == 'failure'
+        run: |
+          echo "Deployment failed health check. Rollback was attempted. Marking workflow as failed."
+          exit 1
+
+      # ── Upload deployment history as artifact ────────────────────────────────
+      - name: Upload deployment log artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-log-${{ github.run_number }}
+          path: .deploy-logs/history.log
+          retention-days: 90
