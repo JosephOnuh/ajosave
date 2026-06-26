@@ -147,6 +147,7 @@ impl AjoContract {
             panic!("already contributed this cycle");
         }
 
+        // Cache token and amount in locals — avoids two extra storage reads
         let token: Address = env.storage().instance().get(&DataKey::Token).expect("not initialized");
         let amount: i128 = env.storage().instance().get(&DataKey::ContributionAmount).expect("not initialized");
 
@@ -178,14 +179,15 @@ impl AjoContract {
             panic!("payout time not reached");
         }
 
+        // Cache all remaining reads into locals — avoids repeated storage lookups below
         let members: Vec<Address> = env.storage().instance().get(&DataKey::Members).expect("not initialized");
         let max_members: u32 = env.storage().instance().get(&DataKey::MaxMembers).expect("not initialized");
+        let token: Address = env.storage().instance().get(&DataKey::Token).expect("not initialized");
+        let contribution: i128 = env.storage().instance().get(&DataKey::ContributionAmount).expect("not initialized");
+        let interval: u64 = env.storage().instance().get(&DataKey::CycleIntervalSecs).expect("not initialized");
 
         // Recipient is the member at position (current_cycle - 1)
         let recipient = members.get(current_cycle - 1).expect("invalid cycle");
-
-        let token: Address = env.storage().instance().get(&DataKey::Token).expect("not initialized");
-        let contribution: i128 = env.storage().instance().get(&DataKey::ContributionAmount).expect("not initialized");
         let pot = contribution * (max_members as i128);
 
         let token_client = token::Client::new(&env, &token);
@@ -198,7 +200,6 @@ impl AjoContract {
             env.storage().instance().set(&DataKey::Completed, &true);
             env.events().publish((Symbol::new(&env, "completed"),), ());
         } else {
-            let interval: u64 = env.storage().instance().get(&DataKey::CycleIntervalSecs).expect("not initialized");
             env.storage().instance().set(&DataKey::CurrentCycle, &(current_cycle + 1));
             env.storage().instance().set(&DataKey::NextPayoutTime, &(env.ledger().timestamp() + interval));
         }
