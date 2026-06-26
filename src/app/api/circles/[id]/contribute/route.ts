@@ -4,12 +4,12 @@ import { authOptions } from "@/lib/auth";
 import { getCircleById, getMembersByCircle } from "@/server/services/circle.service";
 import { initializePayment } from "@/lib/paystack";
 import { serverConfig } from "@/server/config";
-import { withErrorHandler } from "@/server/middleware";
+import { withErrorHandler, withIdempotency } from "@/server/middleware";
 import { query } from "@/lib/db";
 import { randomUUID } from "crypto";
 import type { ApiResponse } from "@/types";
 
-export const POST = withErrorHandler(async (_req: NextRequest, ctx: unknown) => {
+export const POST = withIdempotency(withErrorHandler(async (_req: NextRequest, ctx: unknown) => {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json<ApiResponse<never>>(
@@ -90,4 +90,4 @@ export const POST = withErrorHandler(async (_req: NextRequest, ctx: unknown) => 
     success: true,
     data: { authorizationUrl, reference, platformFee },
   });
-});
+}));
