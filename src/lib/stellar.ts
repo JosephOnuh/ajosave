@@ -131,6 +131,8 @@ function isRetryable(err: any): boolean {
 export async function sendUsdcPayment(destination: string, amount: string): Promise<string> {
   const keypair = Keypair.fromSecret(serverConfig.stellar.serverSecretKey);
   const MAX_ATTEMPTS = 4;
+  const baseFee = await getCurrentBaseFee();
+  const fee = String(calculatePriorityFee(baseFee));
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {

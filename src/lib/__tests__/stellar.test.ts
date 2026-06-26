@@ -260,6 +260,54 @@ describe("USDC trustline checks", () => {
   });
 });
 
+describe("sendUsdcPayment fee calculation", () => {
+  const destination = "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5";
+  const amount = "10.0000000";
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("calls getCurrentBaseFee and uses calculatePriorityFee in TransactionBuilder", async () => {
+    const mockBaseFee = 200;
+    (horizonServer.feeStats as jest.Mock) = jest.fn().mockResolvedValue({
+      fee_charged: { mode: String(mockBaseFee) },
+    });
+
+    const mockAccount = {
+      sequenceNumber: () => "1",
+      accountId: () => destination,
+      incrementSequenceNumber: () => {},
+      balances: [
+        {
+          asset_type: "credit_alphanum4",
+          asset_code: "USDC",
+          asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+          balance: "100.0000000",
+        },
+      ],
+    };
+    (horizonServer.loadAccount as jest.Mock) = jest.fn().mockResolvedValue(mockAccount);
+    (horizonServer.submitTransaction as jest.Mock) = jest
+      .fn()
+      .mockResolvedValue({ hash: "fee-test-hash" });
+
+    const hash = await sendUsdcPayment(destination, amount);
+
+    expect(hash).toBe("fee-test-hash");
+    expect(horizonServer.feeStats).toHaveBeenCalledTimes(1);
+
+    // The submitted transaction should carry the priority fee (2 × baseFee = 400)
+    const submittedTx = (horizonServer.submitTransaction as jest.Mock).mock.calls[0][0];
+    expect(Number(submittedTx.fee)).toBe(calculatePriorityFee(mockBaseFee));
+  });
+});
+
 describe("sendUsdcPayment pathfinding fallback", () => {
   const destination = "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5";
   const amount = "10.0000000";
