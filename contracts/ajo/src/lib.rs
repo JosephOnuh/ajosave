@@ -541,7 +541,7 @@ impl AjoContract {
 
     // ── Read-only ─────────────────────────────────────────────────────────────
 
-    pub fn get_state(env: Env) -> (u32, u32, u64, bool) {
+    pub fn get_state(env: Env) -> (u32, u32, u64, bool, bool) {
         let current_cycle: u32 = env.storage().instance().get(&DataKey::CurrentCycle).unwrap_or(0);
         let max_members: u32 = env.storage().instance().get(&DataKey::MaxMembers).unwrap_or(0);
         let next_payout_time: u64 = env.storage().instance().get(&DataKey::NextPayoutTime).unwrap_or(0);
