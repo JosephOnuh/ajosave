@@ -33,6 +33,10 @@ const config = {
       testPathPattern: "src/(?!__tests__/integration)",
       setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
       moduleNameMapper: { "^@/(.*)$": "<rootDir>/src/$1" },
+      extensionsToTreatAsEsm: [],
+      transform: {
+        "^.+\\.(js|jsx|ts|tsx|mjs)$": ["<rootDir>/node_modules/next/dist/build/swc/jest-transformer.js", {}],
+      },
     },
     {
       displayName: "integration",
@@ -40,6 +44,9 @@ const config = {
       testPathPattern: "src/__tests__/integration/.*\\.test\\.ts$",
       setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
       moduleNameMapper: { "^@/(.*)$": "<rootDir>/src/$1" },
+      transform: {
+        "^.+\\.(js|jsx|ts|tsx|mjs)$": ["<rootDir>/node_modules/next/dist/build/swc/jest-transformer.js", {}],
+      },
     },
   ],
 };
