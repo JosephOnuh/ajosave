@@ -47,6 +47,7 @@ export function Onboarding({ onClose }: { onClose?: () => void }) {
             <div>
               <h3>Make Your First Contribution</h3>
               <p>Create or join a circle and contribute USDC to start saving together.</p>
+              <p>Need guidance? Visit our <a href="/help">Help Center</a> or check the <a href="/faq">FAQ</a>.</p>
             </div>
           )}
         </div>
