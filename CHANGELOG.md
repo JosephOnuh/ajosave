@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Smile Identity API key log sanitization** (Issue #547): `api_key` is now stripped from all application logs. Added `redactLogObject` utility in `sanitize.ts` that replaces sensitive keys (`api_key`, `apiKey`, `password`, `secret`, `token`) with `[REDACTED]` before logging. `kyc.ts` uses this on any failed token request log entry.
+
+### Key Rotation Procedure
+
+To rotate the Smile Identity API key:
+1. Generate a new key in the [Smile Identity portal](https://portal.smileidentity.com) → Settings → API Keys.
+2. Update the `SMILE_API_KEY` environment variable in your secrets manager (AWS Secrets Manager, Vercel environment variables, etc.).
+3. Restart the application. The key is read from `process.env` at call time — no code changes needed.
+4. Revoke the old key in the Smile Identity portal once traffic confirms the new key is working.
+
 ## [0.1.0] - 2026-04-24
 
 ### Added
