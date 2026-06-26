@@ -92,6 +92,12 @@ export function MemberPayoutList({ circle, initialMembers, isCreator, currentUse
                   {isMe && <span className={styles.youBadge}>you</span>}
                 </span>
 
+                {isCreator && m.stellarPublicKey && (
+                  <span className={styles.walletKey} title={m.stellarPublicKey}>
+                    {m.stellarPublicKey.slice(0, 6)}…{m.stellarPublicKey.slice(-4)}
+                  </span>
+                )}
+
                 <span className={styles.statusTag}>
                   {isPast && <span className={`${styles.tag} ${styles.tagDone}`}>Paid out ✓</span>}
                   {isCurrent && <span className={`${styles.tag} ${styles.tagActive}`}>Receiving now</span>}

@@ -1,6 +1,10 @@
 const nextJest = require("next/jest");
 const createJestConfig = nextJest({ dir: "./" });
 
+const SWC_TRANSFORM = {
+  "^.+\\.(js|jsx|ts|tsx|mjs)$": ["next/dist/build/swc/jest-transformer.js", {}],
+};
+
 /** @type {import('jest').Config} */
 const config = {
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
@@ -32,7 +36,13 @@ const config = {
       testEnvironment: "jest-environment-jsdom",
       testPathPattern: "src/(?!__tests__/integration)",
       setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
-      moduleNameMapper: { "^@/(.*)$": "<rootDir>/src/$1" },
+      moduleNameMapper: {
+        "^@/(.*)$": "<rootDir>/src/$1",
+        "^.+\\.module\\.css$": "<rootDir>/node_modules/next/dist/build/jest/__mocks__/fileMock.js",
+        "^.+\\.(css|png|jpg|svg|gif|ico|woff2?|ttf|eot)$": "<rootDir>/node_modules/next/dist/build/jest/__mocks__/fileMock.js",
+      },
+      transform: SWC_TRANSFORM,
+      transformIgnorePatterns: ["/node_modules/(?!(@stellar/freighter-api)/)"],
     },
     {
       displayName: "integration",
@@ -40,6 +50,7 @@ const config = {
       testPathPattern: "src/__tests__/integration/.*\\.test\\.ts$",
       setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
       moduleNameMapper: { "^@/(.*)$": "<rootDir>/src/$1" },
+      transform: SWC_TRANSFORM,
     },
   ],
 };
