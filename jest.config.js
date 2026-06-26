@@ -1,5 +1,6 @@
 const nextJest = require("next/jest");
 const createJestConfig = nextJest({ dir: "./" });
+const baseConfig = { transform: { "^.+\\.(ts|tsx|js|jsx)$": ["babel-jest", { presets: ["next/babel"] }] } };
 
 /** @type {import('jest').Config} */
 const config = {
@@ -33,6 +34,7 @@ const config = {
       testPathPattern: "src/(?!__tests__/integration)",
       setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
       moduleNameMapper: { "^@/(.*)$": "<rootDir>/src/$1" },
+      ...baseConfig,
     },
     {
       displayName: "integration",
@@ -40,6 +42,7 @@ const config = {
       testPathPattern: "src/__tests__/integration/.*\\.test\\.ts$",
       setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
       moduleNameMapper: { "^@/(.*)$": "<rootDir>/src/$1" },
+      ...baseConfig,
     },
   ],
 };
