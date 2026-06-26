@@ -1,3 +1,4 @@
+<!-- #562: on-chain completion certificate NFT minting UI -->
 # Ajosave
 
 > **Trustless rotating savings circles (Ajo/Esusu) on the Stellar blockchain.**  
