@@ -1,3 +1,4 @@
+<!-- #574: USDC balance display and Stellar account overview -->
 # Ajosave
 
 > **Trustless rotating savings circles (Ajo/Esusu) on the Stellar blockchain.**  
