@@ -33,8 +33,13 @@ services:
 
   redis:
     image: redis:7-alpine
+    # AOF persistence: survives container restarts.
+    # --appendonly yes   — enables Append-Only File durability
+    # --appendfsync everysec — flushes to disk every second (best balance of
+    #                          durability vs. throughput for OTPs / rate limits)
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
-      - redis_data:/data
+      - redis_data:/data   # /data is where Redis writes appendonly.aof
     ports:
       - "6379:6379"
     healthcheck:
