@@ -1,7 +1,7 @@
 import { query } from "@/lib/db";
 import type { User } from "@/types";
 
-// Score adjustments
+// Score adjustments.
 const SCORE_INCREMENT = 5; // Points added on-time contribution
 const SCORE_DECREMENT = 10; // Points deducted on missed contribution
 const MIN_SCORE = 0;
