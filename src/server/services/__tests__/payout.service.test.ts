@@ -131,7 +131,7 @@ describe("processCyclePayout", () => {
 
       // Total pot = 10 USDC × 3 members = 30.0000000
       expect(mockValidateStellarRecipient).toHaveBeenCalledWith(RECIPIENT_KEY);
-      expect(mockSendUsdcPayment).toHaveBeenCalledWith(RECIPIENT_KEY, "30.0000000");
+      expect(mockSendUsdcPayment).toHaveBeenCalledWith(RECIPIENT_KEY, "30.0000000", `ajo-${CIRCLE_ID}-cycle-1`);
       expect(payout.circleId).toBe(CIRCLE_ID);
       expect(payout.amountUsdc).toBe("30.0000000");
       expect(payout.txHash).toBe(TX_HASH);
