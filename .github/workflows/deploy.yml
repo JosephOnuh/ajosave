@@ -39,9 +39,36 @@ jobs:
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       - name: Deploy to Vercel
+        id: vercel_deploy
         uses: amondnet/vercel-action@v25
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: "--prod"
+
+      - name: Health check gate
+        id: health_check
+        run: |
+          APP_URL="${{ vars.NEXT_PUBLIC_APP_URL }}"
+          RETRIES=5
+          TIMEOUT=30
+          for i in $(seq 1 $RETRIES); do
+            echo "Health check attempt $i/$RETRIES..."
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time $TIMEOUT "$APP_URL/api/health" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed (HTTP $STATUS)"
+              exit 0
+            fi
+            echo "Health check failed (HTTP $STATUS), waiting 10s..."
+            sleep 10
+          done
+          echo "Health check failed after $RETRIES attempts"
+          exit 1
+
+      - name: Notify Slack on health check failure
+        if: failure() && steps.health_check.outcome == 'failure'
+        run: |
+          curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"text\": \"🚨 *Production deploy health check failed*\nCommit: \`${{ github.sha }}\`\nBranch: \`${{ github.ref_name }}\`\nThe previous version remains active. <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>\"}"

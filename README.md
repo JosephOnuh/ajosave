@@ -167,6 +167,12 @@ STELLAR_AJO_CONTRACT_ID=CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
 
 ---
 
+## Documentation
+
+- [Payout Randomization](docs/payout-randomization.md) — shuffle algorithm, randomness source, verifiability, and planned improvements
+
+---
+
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.

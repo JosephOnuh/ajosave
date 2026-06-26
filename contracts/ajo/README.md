@@ -16,6 +16,7 @@ The contract manages the full lifecycle of a savings circle: member enrollment, 
 - [Events](#events)
 - [Security Model](#security-model)
 - [Example Invocations](#example-invocations)
+- [Payout Randomization](../../docs/payout-randomization.md)
 
 ---
 

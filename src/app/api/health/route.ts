@@ -39,6 +39,7 @@ export const GET = withErrorHandler(async (_req: NextRequest) => {
   health.status = health.db === "ok" && health.redis === "ok" ? "ok" : "degraded";
   health.totalMs = totalMs;
 
-  return NextResponse.json(health);
+  const httpStatus = health.status === "ok" ? 200 : 503;
+  return NextResponse.json(health, { status: httpStatus });
 });
 
