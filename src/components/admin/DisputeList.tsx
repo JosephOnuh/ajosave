@@ -26,7 +26,7 @@ export function DisputeList({ disputes }: DisputeListProps) {
     }
     setActing(disputeId);
     try {
-      const res = await fetch("/api/admin/disputes", {
+      const res = await fetch("/api/v1/admin/disputes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
