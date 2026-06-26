@@ -158,6 +158,54 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+  docker-security-scan:
+    name: Docker Security Scan (Trivy)
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'push'
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Trivy vulnerability DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: trivy-db-
+
+      - name: Build Docker image
+        run: docker build -t ajosave:${{ github.sha }} .
+
+      - name: Run Trivy scan (CRITICAL — fail build)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ajosave:${{ github.sha }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL
+          ignore-unfixed: true
+          cache-dir: ~/.cache/trivy
+
+      - name: Run Trivy scan (HIGH — warn, upload SARIF)
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ajosave:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          cache-dir: ~/.cache/trivy
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
   contract-test:
     name: Soroban Contract Tests
     runs-on: ubuntu-latest
