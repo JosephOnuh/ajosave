@@ -8,6 +8,7 @@ jest.mock("next/server", () => ({
 jest.mock("@sentry/nextjs", () => ({ captureException: jest.fn() }));
 jest.mock("next-auth", () => ({ getServerSession: jest.fn() }));
 jest.mock("@/lib/sms", () => ({ sendOtp: jest.fn().mockResolvedValue("123456") }));
+jest.mock("@/lib/encryption", () => ({ hmacIndex: jest.fn((v: string) => `hmac:${v}`) }));
 jest.mock("@/lib/lockout", () => ({
   getLockoutStatus: jest.fn().mockResolvedValue({ isLocked: false, attempts: 0, remainingAttempts: 5 }),
 }));
@@ -31,6 +32,7 @@ jest.mock("@/lib/correlation", () => ({ runWithCorrelationId: (_id: string, fn: 
 jest.mock("@/lib/logger", () => ({ child: () => ({ info: jest.fn(), error: jest.fn() }) }));
 
 import { POST } from "../route";
+import { getRedis } from "@/lib/redis";
 
 const makeReq = (body: object) => ({
   json: async () => body,
@@ -53,10 +55,19 @@ describe("POST /api/v1/auth/send-otp — rate limiting", () => {
   });
 
   it("withRateLimit is applied with 5 req/min limit", () => {
-    // Verify the middleware mock was called with limit:5
     const middleware = require("@/server/middleware");
     expect(middleware.withRateLimit).toBeDefined();
-    // The route module calls withRateLimit at load time; confirm it's a function
     expect(typeof middleware.withRateLimit).toBe("function");
+  });
+
+  it("stores OTP under hmac key, never plaintext phone", async () => {
+    const phone = "+2348012345678";
+    const mockSet = jest.fn().mockResolvedValue("OK");
+    (getRedis as jest.Mock).mockResolvedValueOnce({ set: mockSet });
+    await POST(makeReq({ phone }) as any);
+    expect(mockSet).toHaveBeenCalledTimes(1);
+    const [key] = mockSet.mock.calls[0];
+    expect(key).toMatch(/^otp:/);
+    expect(key).not.toContain(phone);
   });
 });

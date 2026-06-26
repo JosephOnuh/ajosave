@@ -3,6 +3,7 @@ import { withErrorHandler, withSanitizedBody } from "@/server/middleware";
 import { verifyOtpSchema } from "@/types/schemas";
 import { getRedis } from "@/lib/redis";
 import { getLockoutStatus, recordFailure, resetLockout } from "@/lib/lockout";
+import { hmacIndex } from "@/lib/encryption";
 import { query } from "@/lib/db";
 import { hmacIndex } from "@/lib/encryption";
 import type { ApiResponse } from "@/types";
