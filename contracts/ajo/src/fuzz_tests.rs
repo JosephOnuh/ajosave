@@ -234,4 +234,45 @@ mod fuzz {
             let (cycle, _, _, _, _) = ctx.client.get_state();
         assert_eq!(cycle, 2, "should advance to cycle 2 after first payout");
     }
+
+    /// Fuzz: payout invariant — pot must equal contribution * max_members.
+    ///
+    /// We cannot corrupt storage directly in the sandbox, so we verify the
+    /// positive path: for a range of (contribution, max_members) combinations
+    /// the first payout always succeeds and the recipient's balance increases
+    /// by exactly `contribution * max_members` — confirming the invariant
+    /// assertion does not fire on valid state.
+    #[test]
+    fn fuzz_payout_invariant_correct_amount() {
+        let cases: &[(i128, u32)] = &[
+            (1, 2),
+            (100_000_000, 3),
+            (50_000_000, 5),
+            (1_000_000, 10),
+            (1_000_000_000_000, 20),
+        ];
+
+        for &(contribution, max_members) in cases {
+            let ctx = make_ctx(max_members, contribution, 86_400);
+            for m in ctx.members.iter() {
+                ctx.client.join(m);
+            }
+
+            let recipient = ctx.members.get(0).unwrap();
+            let balance_before = ctx.token.balance(&recipient);
+
+            ctx.env.ledger().with_mut(|l| l.timestamp = 86_401);
+            // Must not panic — invariant holds for valid stored parameters
+            ctx.client.payout();
+
+            let balance_after = ctx.token.balance(&recipient);
+            let expected_pot = contribution * (max_members as i128);
+            assert_eq!(
+                balance_after - balance_before,
+                expected_pot,
+                "contribution={contribution} max_members={max_members}: \
+                 recipient should receive exactly contribution * max_members"
+            );
+        }
+    }
 }

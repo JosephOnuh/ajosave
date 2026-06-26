@@ -72,6 +72,15 @@ pub enum DataKey {
     PayoutLock,
 }
 
+// ─── Error types ──────────────────────────────────────────────────────────────
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub enum ContractError {
+    /// `payout_amount != contribution_amount * max_members` — arithmetic invariant violated.
+    InvalidPayoutAmount,
+}
+
 // ─── Contract ─────────────────────────────────────────────────────────────────
 
 #[contract]
@@ -345,7 +354,18 @@ impl AjoContract {
 
         let token: Address = env.storage().instance().get(&DataKey::Token).expect("not initialized");
         let contribution: i128 = env.storage().instance().get(&DataKey::ContributionAmount).expect("not initialized");
-        let pot = contribution * (max_members as i128);
+
+        // ─── Invariant: payout_amount == contribution_amount * max_members ────────
+        // checked_mul guards against i128 overflow; if it fails the arithmetic is
+        // inconsistent with stored parameters and we must not transfer.
+        let pot: i128 = match contribution.checked_mul(max_members as i128) {
+            Some(p) => p,
+            None => panic!("InvalidPayoutAmount"),
+        };
+        // Secondary assertion: pot must be strictly positive
+        if pot <= 0 {
+            panic!("InvalidPayoutAmount");
+        }
 
         // ─── Effects before external call ─────────────────────────────────────
         if current_cycle >= max_members {
@@ -541,7 +561,7 @@ impl AjoContract {
 
     // ── Read-only ─────────────────────────────────────────────────────────────
 
-    pub fn get_state(env: Env) -> (u32, u32, u64, bool) {
+    pub fn get_state(env: Env) -> (u32, u32, u64, bool, bool) {
         let current_cycle: u32 = env.storage().instance().get(&DataKey::CurrentCycle).unwrap_or(0);
         let max_members: u32 = env.storage().instance().get(&DataKey::MaxMembers).unwrap_or(0);
         let next_payout_time: u64 = env.storage().instance().get(&DataKey::NextPayoutTime).unwrap_or(0);

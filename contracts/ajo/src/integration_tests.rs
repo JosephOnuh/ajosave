@@ -78,7 +78,7 @@ let (cycle, max, _, completed, _) = client.get_state();
         assert_eq!(cycle, 1, "circle should start at cycle 1 after all members join");
         assert_eq!(max, *max_members);
         assert!(!completed);
-        assert_eq!(client.get_members().len(), 5);
+        assert_eq!(client.get_members().len(), *max_members);
 
         let mut timestamp: u64 = 0;
         for cycle_num in 1..=*max_members {
@@ -323,7 +323,7 @@ let (cycle, max, _, completed, _) = client.get_state();
         }
         assert_eq!(client.get_members().len(), 20);
 
-        let (cycle, max, _, completed) = client.get_state();
+        let (cycle, max, _, completed, _) = client.get_state();
         assert_eq!(cycle, 1);
         assert_eq!(max, *max_members);
         assert!(!completed);
@@ -347,17 +347,17 @@ let (cycle, max, _, completed, _) = client.get_state();
             );
 
             if cycle_num < *max_members {
-                let (current, _, _, done) = client.get_state();
+                let (current, _, _, done, _) = client.get_state();
                 assert_eq!(current, cycle_num + 1);
                 assert!(!done);
                 for m in members.iter() {
-                    client.contribute(m);
+                    client.contribute(m, contribution);
                 }
             }
         }
 
         // 3. Circle is completed
-        let (_, _, _, completed) = client.get_state();
+        let (_, _, _, completed, _) = client.get_state();
         assert!(completed, "circle should be marked completed after all 20 payouts");
 
         // 4. Every member breaks even and has updated reputation
@@ -801,5 +801,32 @@ let (cycle, max, _, completed, _) = client.get_state();
         f.client.join(&f.members.get(0).unwrap());
         f.env.ledger().with_mut(|l| l.timestamp = f.interval + 1);
         f.client.payout();
+    }
+
+    // ─── Payout invariant (issue #501) ───────────────────────────────────────
+
+    /// Invariant: recipient receives exactly contribution_amount * max_members.
+    /// Verifies that the checked_mul assertion does not falsely fire on valid
+    /// stored parameters and that the transferred amount is correct.
+    #[test]
+    fn test_payout_invariant_correct_amount() {
+        let f = setup_fixture(3);
+        let Fixture { env, members, token, client, contribution, max_members, interval, .. } = &f;
+
+        for m in members.iter() { client.join(m); }
+
+        let recipient = members.get(0).unwrap();
+        let before = token.balance(&recipient);
+
+        env.ledger().with_mut(|l| l.timestamp = interval + 1);
+        client.payout();
+
+        let after = token.balance(&recipient);
+        let expected = contribution * (*max_members as i128);
+        assert_eq!(
+            after - before,
+            expected,
+            "payout must transfer exactly contribution_amount * max_members"
+        );
     }
 }
