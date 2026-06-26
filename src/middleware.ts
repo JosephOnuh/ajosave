@@ -24,22 +24,22 @@ export function middleware(request: NextRequest) {
     .filter(Boolean)
     .map((o) => o!.trim().replace(/\/$/, ""));
 
-  // Handle API versioning redirects
-  if (request.nextUrl.pathname.startsWith("/api/") && !request.nextUrl.pathname.startsWith("/api/v1/")) {
-    // Skip auth routes as they need special handling
-    if (!request.nextUrl.pathname.startsWith("/api/auth/")) {
-      const newUrl = request.nextUrl.clone();
-      newUrl.pathname = newUrl.pathname.replace('/api/', '/api/v1/');
-      
-      const response = NextResponse.redirect(newUrl, {
-        status: request.method === 'GET' ? 301 : 308,
-      });
-      
-      response.headers.set('X-API-Deprecated', 'true');
-      response.headers.set('X-API-Deprecation-Info', `This endpoint is deprecated. Use ${newUrl.pathname} instead.`);
-      
-      return response;
-    }
+  // API versioning: transparently rewrite /api/:path* → /api/v1/:path*
+  // Excludes auth routes (handled by NextAuth).
+  if (
+    request.nextUrl.pathname.startsWith("/api/") &&
+    !request.nextUrl.pathname.startsWith("/api/v1/") &&
+    !request.nextUrl.pathname.startsWith("/api/auth/")
+  ) {
+    const newUrl = request.nextUrl.clone();
+    newUrl.pathname = newUrl.pathname.replace("/api/", "/api/v1/");
+    const response = NextResponse.rewrite(newUrl);
+    response.headers.set("X-API-Deprecated", "true");
+    response.headers.set(
+      "X-API-Deprecation-Info",
+      `This path is deprecated. Use ${newUrl.pathname} instead.`
+    );
+    return response;
   }
 
   // Handle CORS for API routes
