@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { DeleteAccountButton } from "@/components/ui/DeleteAccountButton";
+import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import styles from "./page.module.css";
 
 interface SessionInfo {
@@ -27,12 +28,18 @@ export default function SettingsPage() {
   const [sessionMessage, setSessionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [revokingSession, setRevokingSession] = useState<string | null>(null);
   const [revokingAll, setRevokingAll] = useState(false);
+  const [locale, setLocale] = useState("en");
 
   useEffect(() => {
     if (session) {
       fetchSessions();
     }
   }, [session]);
+
+  useEffect(() => {
+    const savedLocale = localStorage.getItem("preferred-locale") || "en";
+    setLocale(savedLocale);
+  }, []);
 
   const fetchSessions = async () => {
     setSessionsLoading(true);
@@ -175,6 +182,19 @@ export default function SettingsPage() {
     <div className={styles.container}>
       <div className={styles.content}>
         <h1 className={styles.title}>Settings</h1>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>Language</h2>
+          <div className={styles.settingItem}>
+            <div className={styles.settingInfo}>
+              <h3 className={styles.settingName}>Preferred language</h3>
+              <p className={styles.settingDesc}>Choose your preferred language for the app experience.</p>
+            </div>
+            <div className={styles.settingControl}>
+              <LanguageSelector currentLocale={locale} />
+            </div>
+          </div>
+        </section>
 
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Notifications</h2>
