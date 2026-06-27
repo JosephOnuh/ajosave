@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { query, transaction } from "@/lib/db";
 import { serverConfig } from "@/server/config";
 import logger from "@/lib/logger";
+import { grantReferralReward } from "@/server/services/referral.service";
 
 function verifySignature(payload: string, signature: string): boolean {
   if (!signature || !serverConfig.paystack.secretKey) return false;
@@ -19,6 +20,19 @@ function verifySignature(payload: string, signature: string): boolean {
   }
 
   return timingSafeEqual(expectedBuffer, signatureBuffer);
+}
+
+function usdcToStroops(usdc: string | number): bigint {
+  const str = typeof usdc === "number" ? usdc.toFixed(7) : usdc;
+  const parts = str.split(".");
+  const integerPart = parts[0] || "0";
+  let fractionPart = parts[1] || "";
+  if (fractionPart.length > 7) {
+    fractionPart = fractionPart.slice(0, 7);
+  } else {
+    fractionPart = fractionPart.padEnd(7, "0");
+  }
+  return BigInt(integerPart + fractionPart);
 }
 
 export async function POST(req: NextRequest) {
@@ -92,10 +106,13 @@ export async function POST(req: NextRequest) {
         // Amount paid in this transaction (from Paystack event, in kobo → convert to USDC proportionally)
         // We use the metadata.payUsdc or topUpUsdc if present, otherwise treat as full payment
         const meta = event.data?.metadata ?? {};
-        const creditUsdc = parseFloat(meta.payUsdc ?? meta.topUpUsdc ?? contrib.amount_usdc);
-        const newPaidUsdc = parseFloat(contrib.amount_paid_usdc) + creditUsdc;
-        const fullUsdc = parseFloat(contrib.amount_usdc);
-        const isFullyPaid = newPaidUsdc >= fullUsdc - 0.0000001; // float tolerance
+        const creditStroops = usdcToStroops(meta.payUsdc ?? meta.topUpUsdc ?? contrib.amount_usdc);
+        const contribPaidStroops = usdcToStroops(contrib.amount_paid_usdc);
+        const fullStroops = usdcToStroops(contrib.amount_usdc);
+
+        const newPaidStroops = contribPaidStroops + creditStroops;
+        const finalPaidStroops = newPaidStroops < fullStroops ? newPaidStroops : fullStroops;
+        const isFullyPaid = finalPaidStroops === fullStroops;
 
         await q(
           `UPDATE contributions
@@ -105,14 +122,38 @@ export async function POST(req: NextRequest) {
                updated_at       = NOW()
            WHERE id = $4`,
           [
-            Math.min(newPaidUsdc, fullUsdc).toFixed(7),
+            (Number(finalPaidStroops) / 10_000_000).toFixed(7),
             isFullyPaid ? "confirmed" : "pending",
             reference,
             contrib.id,
           ]
         );
 
-        logger.info({ reference, isFullyPaid, newPaidUsdc, fullUsdc }, "Contribution payment credited");
+        if (isFullyPaid) {
+          // Fetch the user_id for this contribution to trigger referral reward.
+          // Fire-and-forget: referral failure must not block webhook response.
+          const { rows: memberRows } = await q<{ user_id: string }>(
+            `SELECT m.user_id FROM contributions c
+             JOIN members m ON m.id = c.member_id
+             WHERE c.id = $1`,
+            [contrib.id]
+          );
+          if (memberRows[0]) {
+            grantReferralReward(memberRows[0].user_id).catch((err) =>
+              logger.error({ err }, "[referral] Failed to grant reward")
+            );
+          }
+        }
+
+        logger.info(
+          {
+            reference,
+            isFullyPaid,
+            newPaidUsdc: (Number(newPaidStroops) / 10_000_000).toFixed(7),
+            fullUsdc: contrib.amount_usdc,
+          },
+          "Contribution payment credited"
+        );
       }
     });
 

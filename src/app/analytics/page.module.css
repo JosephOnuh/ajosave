@@ -54,3 +54,33 @@
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
+
+.tableSection {
+  margin-top: var(--space-8);
+  overflow-x: auto;
+}
+
+.analyticsTable {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+}
+
+.analyticsTable th,
+.analyticsTable td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.analyticsTable th {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.analyticsTable tr:last-child td {
+  border-bottom: none;
+}

@@ -41,6 +41,7 @@
     "cap:copy": "npx cap copy",
     "contract:build": "cd contracts && stellar contract build",
     "contract:test": "cd contracts && cargo test",
+    "contract:bindings": "stellar contract bindings typescript --wasm contracts/target/wasm32-unknown-unknown/release/ajosave_ajo.wasm --contract-id $STELLAR_AJO_CONTRACT_ID --network testnet --output-dir contracts/ajo/bindings",
     "contract:deploy": "ts-node scripts/deploy-contract.ts",
     "contract:verify": "ts-node scripts/verify-contract.ts",
     "migrate": "ts-node scripts/migrate.ts up",

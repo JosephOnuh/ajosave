@@ -42,6 +42,12 @@ export function JoinCircleForm({ circle, token, inviteValid }: Props) {
   useEffect(() => {
     if (publicKey !== null) {
       setStellarPublicKey(publicKey);
+      // Auto-save to profile when wallet connects
+      fetch("/api/v1/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stellarPublicKey: publicKey }),
+      }).catch(() => {});
     }
   }, [publicKey]);
 
