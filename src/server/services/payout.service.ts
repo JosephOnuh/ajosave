@@ -103,7 +103,7 @@ export async function processCyclePayout(
           txHash = await invokeContractPayout(circle.contractId);
         } else {
           await validateStellarRecipient(recipientStellarKey);
-          txHash = await sendUsdcPayment(recipientStellarKey, totalPot);
+          txHash = await sendUsdcPayment(recipientStellarKey, totalPot, `ajo-${circleId}-cycle-${circle.currentCycle}`);
         }
         lastError = "";
         break;
