@@ -1,4 +1,4 @@
-import { sanitizeString, sanitizeBody } from "../sanitize";
+import { sanitizeString, sanitizeBody, redactLogObject } from "../sanitize";
 
 describe("sanitizeString", () => {
   it("strips HTML tags", () => {
@@ -47,5 +47,31 @@ describe("sanitizeBody", () => {
 
   it("handles null values", () => {
     expect(sanitizeBody({ field: null })).toEqual({ field: null });
+  });
+});
+
+describe("redactLogObject", () => {
+  it("redacts api_key", () => {
+    const result = redactLogObject({ api_key: "secret123", partner_id: "p1" });
+    expect(result.api_key).toBe("[REDACTED]");
+    expect(result.partner_id).toBe("p1");
+  });
+
+  it("redacts password and token", () => {
+    const result = redactLogObject({ password: "pw", token: "tok", user: "alice" });
+    expect(result.password).toBe("[REDACTED]");
+    expect(result.token).toBe("[REDACTED]");
+    expect(result.user).toBe("alice");
+  });
+
+  it("passes non-sensitive keys through unchanged", () => {
+    const result = redactLogObject({ user_id: "u1", callback_url: "https://x.com" });
+    expect(result).toEqual({ user_id: "u1", callback_url: "https://x.com" });
+  });
+
+  it("does not mutate the original object", () => {
+    const orig = { api_key: "secret", foo: "bar" };
+    redactLogObject(orig);
+    expect(orig.api_key).toBe("secret");
   });
 });

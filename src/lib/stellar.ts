@@ -5,6 +5,7 @@ import {
   TransactionBuilder,
   Transaction,
   Operation,
+  Memo,
   BASE_FEE,
   Networks,
   StrKey,
@@ -128,7 +129,7 @@ function isRetryable(err: any): boolean {
  * Issue #141: if the server account has insufficient USDC, falls back to
  *             pathPaymentStrictSend (XLM → USDC via DEX) with configurable slippage.
  */
-export async function sendUsdcPayment(destination: string, amount: string): Promise<string> {
+export async function sendUsdcPayment(destination: string, amount: string, memo?: string): Promise<string> {
   const keypair = Keypair.fromSecret(serverConfig.stellar.serverSecretKey);
   const MAX_ATTEMPTS = 4;
 
@@ -136,18 +137,24 @@ export async function sendUsdcPayment(destination: string, amount: string): Prom
     try {
       const account = await withFallback((s) => s.loadAccount(keypair.publicKey()));
 
-      const tx = new TransactionBuilder(account, { fee, networkPassphrase })
+      const baseFee = await getCurrentBaseFee();
+      const fee = String(calculatePriorityFee(baseFee));
+
+      const builder = new TransactionBuilder(account, { fee, networkPassphrase })
         .addOperation(Operation.payment({ destination, asset: USDC, amount }))
-        .setTimeout(30)
-        .build();
+        .setTimeout(30);
+
+      if (memo) builder.addMemo(Memo.text(memo));
+
+      const tx = builder.build();
 
       tx.sign(keypair);
       const result = await withFallback((s) => s.submitTransaction(tx));
       
       if (attempt > 1) {
-        logger.info({ attempt, destination, hash: result.hash, baseFee, fee }, "[stellar] sendUsdcPayment succeeded after retry");
+        logger.info({ attempt, destination, hash: result.hash, baseFee, fee, memo }, "[stellar] sendUsdcPayment succeeded after retry");
       } else {
-        logger.info({ destination, hash: result.hash, baseFee, fee }, "[stellar] sendUsdcPayment succeeded");
+        logger.info({ destination, hash: result.hash, baseFee, fee, memo }, "[stellar] sendUsdcPayment succeeded");
       }
 
       return result.hash;
@@ -253,3 +260,4 @@ export function enqueueStellarTransaction<T>(fn: () => Promise<T>): Promise<T> {
   _txQueue = next.catch(() => {}); // keep queue alive even if fn throws
   return next as Promise<T>;
 }
+

@@ -60,7 +60,20 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-
+      - name: Upload source maps to Sentry
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+        run: |
+          RELEASE="${{ github.sha }}"
+          npx sentry-cli releases new "$RELEASE"
+          npx sentry-cli releases files "$RELEASE" upload-sourcemaps .next \
+            --url-prefix '~/_next' \
+            --rewrite
+          npx sentry-cli releases set-commits "$RELEASE" --auto
+          npx sentry-cli releases finalize "$RELEASE"
+          find .next -name '*.map' -delete
       - name: Deploy to Vercel
         id: deploy
         uses: amondnet/vercel-action@v25

@@ -67,3 +67,4 @@ export const POST = withRateLimit(withErrorHandler(handler), {
   limit: 5,
   windowMs: 10 * 60 * 1000,
 });
+

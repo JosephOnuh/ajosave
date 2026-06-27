@@ -163,6 +163,38 @@ describe("sendUsdcPayment retry logic", () => {
   });
 });
 
+describe("sendUsdcPayment memo", () => {
+  const destination = "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5";
+  const amount = "10.0000000";
+  const mockAccount = {
+    sequenceNumber: () => "1",
+    accountId: () => destination,
+    incrementSequenceNumber: () => {},
+    balances: [{ asset_type: "credit_alphanum4", asset_code: "USDC", asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", balance: "100.0000000" }],
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (horizonServer.loadAccount as jest.Mock) = jest.fn().mockResolvedValue(mockAccount);
+    (horizonServer.submitTransaction as jest.Mock) = jest.fn().mockResolvedValue({ hash: "memo-hash" });
+  });
+
+  it("attaches a text memo to the transaction when provided", async () => {
+    await sendUsdcPayment(destination, amount, "ajo-circle-1-cycle-2");
+
+    const tx = (horizonServer.submitTransaction as jest.Mock).mock.calls[0][0];
+    expect(tx.memo.type).toBe("text");
+    expect(tx.memo.value).toBe("ajo-circle-1-cycle-2");
+  });
+
+  it("submits no memo when memo is omitted", async () => {
+    await sendUsdcPayment(destination, amount);
+
+    const tx = (horizonServer.submitTransaction as jest.Mock).mock.calls[0][0];
+    expect(tx.memo.type).toBe("none");
+  });
+});
+
 describe("USDC trustline checks", () => {
   const publicKey = "GDNIKPB2TPPS2RZG6TDW76YFSPNVEINVTJIPVEPA25Y74TPSLBNOA336";
   const usdcBalance = {
