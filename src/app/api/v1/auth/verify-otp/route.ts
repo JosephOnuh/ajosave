@@ -3,6 +3,7 @@ import { withErrorHandler, withRateLimit } from "@/server/middleware";
 import { verifyOtpSchema } from "@/types/schemas";
 import { getRedis } from "@/lib/redis";
 import { getLockoutStatus, recordFailure, resetLockout } from "@/lib/lockout";
+import { hmacIndex } from "@/lib/encryption";
 import { query } from "@/lib/db";
 import type { ApiResponse } from "@/types";
 
@@ -111,7 +112,7 @@ export const POST = withRateLimit(
 
     // Verify OTP from Redis
     const redis = await getRedis();
-    const storedOtp = await redis.get(`otp:${phone}`);
+    const storedOtp = await redis.get(`otp:${hmacIndex(phone)}`);
 
     if (!storedOtp || storedOtp !== otp) {
       // Record failure and get updated status
@@ -138,7 +139,7 @@ export const POST = withRateLimit(
 
     // OTP is valid - reset failure tracking and delete OTP
     await resetLockout(phone);
-    await redis.del(`otp:${phone}`);
+    await redis.del(`otp:${hmacIndex(phone)}`);
 
     // Load or create user
     let user = await query<{ id: string; phone: string; display_name: string; role: string }>(

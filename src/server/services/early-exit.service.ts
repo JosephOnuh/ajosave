@@ -12,6 +12,13 @@ const EXIT_SELECT = `
   refund_usdc as "refundUsdc", status, created_at as "createdAt", processed_at as "processedAt"
 `;
 
+export async function getPendingEarlyExits(): Promise<EarlyExitRequest[]> {
+  const { rows } = await query<EarlyExitRequest>(
+    `SELECT ${EXIT_SELECT} FROM early_exit_requests WHERE status = 'pending' ORDER BY created_at ASC`
+  );
+  return rows;
+}
+
 export async function requestEarlyExit(
   circleId: string,
   userId: string,

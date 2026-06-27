@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getCircleById, getMembersByCircle } from "@/server/services/circle.service";
 import { initializePayment } from "@/lib/paystack";
 import { serverConfig } from "@/server/config";
-import { withErrorHandler, withIdempotency, withRateLimit } from "@/server/middleware";
+import { withErrorHandler, withIdempotency, withRateLimit, withSanitizedBody } from "@/server/middleware";
 import { query } from "@/lib/db";
 import { randomUUID } from "crypto";
 import { z } from "zod";
@@ -14,7 +14,7 @@ const bodySchema = z.object({
   partialAmountFiat: z.number().positive().optional(),
 });
 
-export const POST = withErrorHandler(async (req: NextRequest, ctx: unknown) => {
+export const POST = withRateLimit(withIdempotency(withErrorHandler(async (req: NextRequest, ctx: unknown) => {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json<ApiResponse<never>>(
@@ -120,4 +120,4 @@ export const POST = withErrorHandler(async (req: NextRequest, ctx: unknown) => {
     success: true,
     data: { authorizationUrl, reference, isPartial, remainingUsdc: circle.contributionUsdc },
   });
-})));
+}));
