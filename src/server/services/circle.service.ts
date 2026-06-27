@@ -809,3 +809,4 @@ export async function deleteCircle(circleId: string, requesterId: string, isAdmi
   );
   return updatedRows[0];
 }
+
