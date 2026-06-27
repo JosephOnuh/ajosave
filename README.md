@@ -109,7 +109,7 @@ The Ajo contract (`contracts/ajo/`) handles the full circle lifecycle:
 | `join` | Member joins and locks first contribution |
 | `contribute` | Member pays for current cycle |
 | `payout` | Admin triggers rotation payout after cycle time |
-| `get_state` | Read current cycle, next payout time, completion |
+| `get_state` | Returns `(current_cycle, max_members, next_payout_time, completed, paused)` — 5 values |
 | `get_members` | List all member addresses |
 
 ### Deployment model: per-circle contracts
