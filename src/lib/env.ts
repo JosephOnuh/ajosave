@@ -11,7 +11,7 @@ const envSchema = z.object({
 
   // Stellar
   STELLAR_NETWORK: z.enum(["testnet", "mainnet"]),
-  STELLAR_AJO_CONTRACT_ID: z.string().min(1),
+  STELLAR_AJO_CONTRACT_ID: z.string().optional(), // optional — event indexer / reputation fallback only; not used for per-circle lifecycle
   STELLAR_SERVER_SECRET_KEY: z.string().min(1),
   STELLAR_HORIZON_URL: z.string().url(),
   STELLAR_NETWORK_PASSPHRASE: z.string().min(1),

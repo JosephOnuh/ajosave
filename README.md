@@ -112,6 +112,19 @@ The Ajo contract (`contracts/ajo/`) handles the full circle lifecycle:
 | `get_state` | Read current cycle, next payout time, completion |
 | `get_members` | List all member addresses |
 
+### Deployment model: per-circle contracts
+
+Each savings circle deploys its own Soroban contract instance. When the last
+member joins a circle, `deployAjoContract()` is called and the resulting
+contract address is stored in the `circles.contract_id` database column.
+
+This gives each circle isolated funds, independent upgradability, and a clean
+on-chain audit trail. See [docs/adr/001-per-circle-contract-deployment.md](docs/adr/001-per-circle-contract-deployment.md)
+for the full architecture decision record.
+
+`STELLAR_AJO_CONTRACT_ID` in `env.example` is used only by the event indexer
+and reputation fallback — it is **not** involved in circle creation or payouts.
+
 ---
 
 ## Getting Started
