@@ -1,3 +1,4 @@
+// .
 import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -7,6 +8,7 @@ import { getContributionsByCircle } from "@/server/services/contribution.service
 import { CircleStatusBadge } from "@/components/ui/CircleStatusBadge";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { MemberPayoutList } from "@/components/circle/MemberPayoutList";
+import { MemberRoster } from "@/components/circle/MemberRoster";
 import { CircleActions } from "@/components/circle/CircleActions";
 import { PayoutCountdown } from "@/components/circle/PayoutCountdown";
 import { PayoutHistory } from "@/components/circle/PayoutHistory";
@@ -102,6 +104,7 @@ export default async function CircleDetailPage({ params }: Props) {
           <div>
             <h1 className={styles.title}>{circle.name}</h1>
             <CircleStatusBadge status={circle.status} />
+            {circle.description && <p className={styles.description}>{circle.description}</p>}
           </div>
           {userId && (
             <CircleActions
@@ -187,6 +190,14 @@ export default async function CircleDetailPage({ params }: Props) {
           </div>
 
           <MemberPayoutList circle={circle} initialMembers={members} isCreator={isCreator} currentUserId={userId} />
+
+          <div className="card" style={{ gridColumn: "1 / -1" }}>
+            <MemberRoster
+              members={members}
+              currentCycle={circle.currentCycle}
+              contributions={contributions.data}
+            />
+          </div>
         </div>
 
         {isAdmin && (
@@ -223,3 +234,4 @@ export default async function CircleDetailPage({ params }: Props) {
     </div>
   );
 }
+// .

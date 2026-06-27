@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { listOpenCircles } from "@/server/services/circle.service";
 import { CircleCard } from "@/components/circle/CircleCard";
+import { CircleCardWrapper } from "@/components/circle/CircleCardWrapper";
 import { CircleFilters } from "@/components/circle/CircleFilters";
 import { Pagination } from "@/components/ui/Pagination";
 import dynamic from "next/dynamic";
@@ -60,18 +61,22 @@ export default async function CirclesPage({ searchParams }: Props) {
           </div>
         ) : (
           <>
-            {/* Client-side infinite scroll browser — keeps initial server data for SEO */}
-            <CirclesBrowser initialData={{ data: circles, total, page, limit: PAGE_SIZE }} initialQuery={{
-              frequency: searchParams.frequency,
-              minAmount: searchParams.minAmount,
-              maxAmount: searchParams.maxAmount,
-              search: searchParams.search,
-              status: searchParams.status,
-              currency: searchParams.currency,
-            }} />
+            <div className={styles.grid} role="list" aria-label="Available circles">
+              {circles.map((circle) => (
+                <CircleCardWrapper
+                  key={circle.id}
+                  href={`/circles/${circle.id}`}
+                  className={styles.cardWrapper}
+                >
+                  <CircleCard circle={circle} members={[]} showJoin />
+                </CircleCardWrapper>
+              ))}
+            </div>
+            <Pagination page={page} total={total} limit={PAGE_SIZE} />
           </>
         )}
       </div>
     </div>
   );
 }
+

@@ -1,3 +1,4 @@
+<!-- #450: Fix focus trap in modal dialogs -->
 # Ajosave
 
 > **Trustless rotating savings circles (Ajo/Esusu) on the Stellar blockchain.**  
@@ -8,6 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Built on Stellar](https://img.shields.io/badge/Built%20on-Stellar-blue)](https://stellar.org)
 [![Soroban](https://img.shields.io/badge/Smart%20Contracts-Soroban-blueviolet)](https://developers.stellar.org/docs/build/smart-contracts)
+[![Status](https://img.shields.io/badge/status-page-brightgreen)](https://stats.uptimerobot.com/ajosave)
 
 ---
 
@@ -47,6 +49,8 @@ Today this runs entirely on trust — no contracts, no guarantees, frequent frau
                                           │  Trustless payout│
                                           └─────────────────┘
 ```
+
+Key architectural decisions are documented in [`docs/adr/`](docs/adr/README.md).
 
 ### Tech Stack
 
@@ -105,8 +109,21 @@ The Ajo contract (`contracts/ajo/`) handles the full circle lifecycle:
 | `join` | Member joins and locks first contribution |
 | `contribute` | Member pays for current cycle |
 | `payout` | Admin triggers rotation payout after cycle time |
-| `get_state` | Read current cycle, next payout time, completion |
+| `get_state` | Returns `(current_cycle, max_members, next_payout_time, completed, paused)` — 5 values |
 | `get_members` | List all member addresses |
+
+### Deployment model: per-circle contracts
+
+Each savings circle deploys its own Soroban contract instance. When the last
+member joins a circle, `deployAjoContract()` is called and the resulting
+contract address is stored in the `circles.contract_id` database column.
+
+This gives each circle isolated funds, independent upgradability, and a clean
+on-chain audit trail. See [docs/adr/001-per-circle-contract-deployment.md](docs/adr/001-per-circle-contract-deployment.md)
+for the full architecture decision record.
+
+`STELLAR_AJO_CONTRACT_ID` in `env.example` is used only by the event indexer
+and reputation fallback — it is **not** involved in circle creation or payouts.
 
 ---
 
@@ -164,6 +181,18 @@ STELLAR_AJO_CONTRACT_ID=CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
 - **Low Fees** — Stellar's near-zero fees make micro-contributions viable
 - **Financial Inclusion** — NGN on-ramp via Paystack bridges local finance to global stablecoin liquidity
 - **On-Chain Reputation** — Contribution history builds a verifiable credit score on Stellar
+
+---
+
+## Status & Uptime
+
+🟢 **Public status page:** [https://stats.uptimerobot.com/ajosave](https://stats.uptimerobot.com/ajosave)
+
+- Monitors `https://ajosave.app/` and `https://ajosave.app/api/health` every **1 minute**
+- Downtime alerts sent via **email** and **Slack**
+- **30-day uptime history** visible on the status page
+
+See [`docs/uptime-monitoring.md`](docs/uptime-monitoring.md) for full setup instructions.
 
 ---
 

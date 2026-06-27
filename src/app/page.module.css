@@ -17,7 +17,7 @@
 .steps { padding: var(--space-20) 0; border-top: 1px solid var(--color-border-subtle); }
 .stepList { display: flex; flex-direction: column; gap: var(--space-8); }
 .step { display: flex; gap: var(--space-5); align-items: flex-start; }
-.stepNum { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: var(--radius-full); background: var(--color-brand-primary); color: #fff; font-size: var(--text-sm); font-weight: var(--font-bold); }
+.stepNum { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: var(--radius-full); background: var(--color-brand-primary); color: var(--color-on-brand); font-size: var(--text-sm); font-weight: var(--font-bold); }
 .stepTitle { font-size: var(--text-base); font-weight: var(--font-semibold); color: var(--color-text-primary); margin-bottom: var(--space-1); }
 .stepDesc { font-size: var(--text-sm); color: var(--color-text-secondary); line-height: var(--leading-relaxed); }
 
