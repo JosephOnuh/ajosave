@@ -68,6 +68,12 @@ export function middleware(request: NextRequest) {
         );
         response.headers.set("Access-Control-Allow-Credentials", "true");
         response.headers.set("Access-Control-Max-Age", "86400");
+        // Add security headers to preflight response
+        response.headers.set("X-Content-Type-Options", "nosniff");
+        response.headers.set("X-Frame-Options", "DENY");
+        response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+        response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+        response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
         return response;
       }
 
@@ -83,12 +89,23 @@ export function middleware(request: NextRequest) {
         "Content-Type, Authorization, X-Requested-With, X-CSRF-Token"
       );
       response.headers.set("Access-Control-Allow-Credentials", "true");
+      // Add security headers to API responses
+      response.headers.set("X-Content-Type-Options", "nosniff");
+      response.headers.set("X-Frame-Options", "DENY");
+      response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+      response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+      response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
       return response;
     }
   }
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy-Report-Only", csp);
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 
   return response;
 }
