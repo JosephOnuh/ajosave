@@ -188,6 +188,16 @@ describe("CircleCard", () => {
     });
   });
 
+  describe("loading state", () => {
+    it("renders a skeleton and marks the card busy while loading", () => {
+      render(<CircleCard circle={baseCircle} members={[]} loading />);
+      const card = screen.getByRole("status");
+      expect(card).toHaveAttribute("aria-busy", "true");
+      expect(screen.queryByText("Lagos Monthly Ajo")).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /view details/i })).not.toBeInTheDocument();
+    });
+  });
+
   describe("View Details button", () => {
     it("shows View Details link when showJoin=false", () => {
       render(<CircleCard circle={baseCircle} members={[]} />);
