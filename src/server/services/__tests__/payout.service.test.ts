@@ -1,3 +1,6 @@
+/**
+ * @jest-environment node
+ */
 import { processCyclePayout, getPayoutsByCircle } from "@/server/services/payout.service";
 import * as circleService from "@/server/services/circle.service";
 import * as db from "@/lib/db";
@@ -202,6 +205,18 @@ describe("processCyclePayout", () => {
   });
 
   describe("Stellar key validation", () => {
+    // The payout service retries up to PAYOUT_MAX_RETRIES (3) times with delays
+    // [5s, 15s, 45s] before propagating errors. Spy on globalThis.setTimeout so
+    // retry delays resolve immediately — avoids a 65-second wait per test.
+    beforeEach(() => {
+      jest
+        .spyOn(globalThis, "setTimeout")
+        .mockImplementation(((fn: Function) => { fn(); return 0; }) as typeof setTimeout);
+    });
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
     it("throws on invalid key format", async () => {
       mockGetCircleById.mockResolvedValue(makeCircle());
       mockGetMembersByCircle.mockResolvedValue(makeMembers(2));
@@ -289,6 +304,9 @@ describe("processCyclePayout", () => {
     });
 
     it("propagates Stellar SDK errors", async () => {
+      jest
+        .spyOn(globalThis, "setTimeout")
+        .mockImplementation(((fn: Function) => { fn(); return 0; }) as typeof setTimeout);
       mockGetCircleById.mockResolvedValue(makeCircle());
       mockGetMembersByCircle.mockResolvedValue(makeMembers(2));
       mockSendUsdcPayment.mockRejectedValue(new Error("Stellar network error"));
@@ -296,6 +314,44 @@ describe("processCyclePayout", () => {
       await expect(processCyclePayout(CIRCLE_ID, RECIPIENT_KEY)).rejects.toThrow(
         "Stellar network error"
       );
+
+      jest.restoreAllMocks();
+    });
+  });
+
+  describe("recipient position lookup", () => {
+    it("skips payout and throws when the member at the current cycle position is defaulted", async () => {
+      const members = makeMembers(3);
+      // Position 2 has defaulted — cycle 2 must not pay them
+      members[1] = { ...members[1], status: "defaulted" as any };
+      mockGetCircleById.mockResolvedValue(makeCircle({ currentCycle: 2 }));
+      mockGetMembersByCircle.mockResolvedValue(members);
+
+      await expect(processCyclePayout(CIRCLE_ID, RECIPIENT_KEY)).rejects.toThrow(
+        "payout skipped"
+      );
+
+      expect(mockSendUsdcPayment).not.toHaveBeenCalled();
+      expect(mockTransaction).not.toHaveBeenCalled();
+    });
+
+    it("pays the member whose position matches currentCycle, not the array index", async () => {
+      // Member at array index 1 (position 2) is the target for cycle 2
+      const members = makeMembers(3);
+      mockGetCircleById.mockResolvedValue(makeCircle({ currentCycle: 2 }));
+      mockGetMembersByCircle.mockResolvedValue(members);
+      const payoutRecord = makePayout({ recipientMemberId: members[1].id });
+      mockTransaction.mockImplementation(async (fn) => {
+        const innerQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: [payoutRecord], rowCount: 1 })
+          .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+        return fn(innerQuery as unknown as typeof db.query);
+      });
+
+      const payout = await processCyclePayout(CIRCLE_ID, RECIPIENT_KEY);
+
+      expect(payout.recipientMemberId).toBe(members[1].id);
     });
   });
 
@@ -342,11 +398,13 @@ describe("processCyclePayout", () => {
 
       await processCyclePayout(CIRCLE_ID, RECIPIENT_KEY);
 
-      // Verify both queries were called within the transaction
+      // Verify both queries were called within the transaction.
+      // The INSERT now happens outside the transaction (as a pending record);
+      // the transaction only finalises the record and marks the member as paid.
       expect(innerQueryMock).toHaveBeenCalledTimes(2);
       expect(innerQueryMock).toHaveBeenNthCalledWith(
         1,
-        expect.stringContaining("INSERT INTO payouts"),
+        expect.stringContaining("UPDATE payouts"),
         expect.any(Array)
       );
       expect(innerQueryMock).toHaveBeenNthCalledWith(

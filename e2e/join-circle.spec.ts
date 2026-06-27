@@ -1,32 +1,12 @@
 import { test, expect } from "@playwright/test";
-
-const AUTH_COOKIE = {
-  name: "next-auth.session-token",
-  value: "e2e-test-session",
-  domain: "localhost",
-  path: "/",
-  httpOnly: true,
-  sameSite: "Lax" as const,
-};
+import { mockAuthSession } from "./helpers/auth";
 
 const CIRCLE_ID = "circle-xyz";
 
 test.describe("Join Circle", () => {
   test.beforeEach(async ({ page, context }) => {
-    await context.addCookies([AUTH_COOKIE]);
+    await mockAuthSession(context, page);
 
-    await page.route("/api/auth/session", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          user: { id: "user-2", name: "Test User", phone: "+2348099999999" },
-          expires: "2099-01-01",
-        }),
-      })
-    );
-
-    // Mock circle detail page data
     await page.route(`/api/circles/${CIRCLE_ID}`, (route) =>
       route.fulfill({
         status: 200,
@@ -67,7 +47,6 @@ test.describe("Join Circle", () => {
     await page.goto(`/circles/${CIRCLE_ID}`);
     await page.getByRole("button", { name: /join circle/i }).click();
 
-    // Expect success feedback (toast or inline message)
     await expect(page.getByText(/joined/i)).toBeVisible();
   });
 
