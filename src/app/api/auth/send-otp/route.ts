@@ -5,6 +5,7 @@ import { sendOtpSchema } from "@/types/schemas";
 import type { ApiResponse } from "@/types";
 import { getRedis } from "@/lib/redis";
 import { getLockoutStatus } from "@/lib/lockout";
+import { hmacIndex } from "@/lib/encryption";
 
 interface SendOtpResponse {
   message: string;
@@ -89,7 +90,7 @@ export const POST = withRateLimit(
 
     // Store OTP in Redis with 10-minute expiry
     const redis = await getRedis();
-    await redis.set(`otp:${phone}`, otp, { EX: 600 });
+    await redis.set(`otp:${hmacIndex(phone)}`, otp, { EX: 600 });
 
     if (process.env.NODE_ENV === "development") console.warn(`[DEV] OTP for ${phone}: ${otp}`);
 

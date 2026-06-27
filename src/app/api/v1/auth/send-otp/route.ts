@@ -5,6 +5,7 @@ import { sendOtpSchema } from "@/types/schemas";
 import type { ApiResponse } from "@/types";
 import { getRedis } from "@/lib/redis";
 import { getLockoutStatus } from "@/lib/lockout";
+import { hmacIndex } from "@/lib/encryption";
 
 interface SendOtpResponse {
   message: string;

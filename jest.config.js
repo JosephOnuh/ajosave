@@ -1,5 +1,6 @@
 const nextJest = require("next/jest");
 const createJestConfig = nextJest({ dir: "./" });
+const baseConfig = { transform: { "^.+\\.(ts|tsx|js|jsx)$": ["babel-jest", { presets: ["next/babel"] }] } };
 
 // Resolved by createJestConfig; projects must opt in explicitly since Jest does
 // not propagate parent-level transforms to project sub-configs.
