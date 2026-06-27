@@ -1,8 +1,14 @@
 import pino from "pino";
 import { getCorrelationId } from "./correlation";
 
+// Keys that must never appear in logs regardless of where they are nested.
+const REDACTED_KEYS = ["api_key", "password", "secret", "authorization", "token"];
+
 const base = pino(
-  { level: process.env.LOG_LEVEL ?? "info" },
+  {
+    level: process.env.LOG_LEVEL ?? "info",
+    redact: { paths: REDACTED_KEYS.map((k) => `*.${k}`).concat(REDACTED_KEYS), censor: "[REDACTED]" },
+  },
   process.env.NODE_ENV !== "production"
     ? pino.transport({ target: "pino-pretty", options: { colorize: true } })
     : undefined

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **#547** Smile Identity `api_key` is now redacted from all application logs via pino `redact` config and a `redactKey()` helper in `kyc.ts`
+- **#547** `kyc.ts` supports fetching the Smile Identity API key from AWS Secrets Manager (`SMILE_API_KEY_SECRET_ARN`) instead of a plain env var, enabling zero-downtime key rotation
+- **#547** Added `SECRETS.md` documenting key rotation procedures for all external API credentials
+
 ## [0.1.0] - 2026-04-24
 
 ### Added
