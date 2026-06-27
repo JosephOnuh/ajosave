@@ -229,16 +229,30 @@ export async function validateStellarRecipient(publicKey: string): Promise<void>
  * The inner transaction must already be signed by the user's keypair.
  * The platform keypair signs the outer fee bump envelope.
  *
+ * Fee is fetched live from Horizon (1.5× current base fee).
+ * Falls back to BASE_FEE * 2 if the Horizon request fails.
+ *
  * @param innerTxXdr - XDR of the signed inner transaction
+ * @param feeMultiplier - multiplier applied to the live base fee (default 1.5)
  * @returns The submitted fee bump transaction hash
  */
-export async function wrapWithFeeBump(innerTxXdr: string): Promise<string> {
+export async function wrapWithFeeBump(innerTxXdr: string, feeMultiplier = 1.5): Promise<string> {
   const feeKeypair = Keypair.fromSecret(serverConfig.stellar.serverSecretKey);
   const innerTx = TransactionBuilder.fromXDR(innerTxXdr, networkPassphrase) as Transaction;
 
+  let maxFee: number;
+  try {
+    const liveBaseFee = await getCurrentBaseFee();
+    maxFee = Math.ceil(liveBaseFee * feeMultiplier);
+    logger.info({ liveBaseFee, feeMultiplier, maxFee }, "[stellar] wrapWithFeeBump: using dynamic fee");
+  } catch (err) {
+    maxFee = Number(BASE_FEE) * 2;
+    logger.warn({ err, maxFee }, "[stellar] wrapWithFeeBump: Horizon fee fetch failed, using fallback fee");
+  }
+
   const feeBump = TransactionBuilder.buildFeeBumpTransaction(
     feeKeypair,
-    BASE_FEE,
+    String(maxFee),
     innerTx,
     networkPassphrase
   );
