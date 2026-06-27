@@ -37,7 +37,10 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   // Control referrer information
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+  // HSTS - max-age=1 year (31536000 seconds)
+  { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+  // Permissions-Policy: restrict camera, microphone, geolocation
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
 const nextConfig = {
@@ -86,8 +89,10 @@ const nextConfig = {
 export default bundleAnalyzer(withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
   silent: true,
   widenClientFileUpload: true,
   hideSourceMaps: true,
   disableLogger: true,
+  tunnelRoute: "/api/monitoring",
 }));

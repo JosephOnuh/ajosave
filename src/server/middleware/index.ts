@@ -153,6 +153,34 @@ export function withRateLimit(
   };
 }
 
+/**
+ * Middleware wrapper that sanitizes the request body before passing to the handler.
+ * Strips HTML tags from string fields to prevent XSS payloads reaching the database.
+ */
+export function withSanitizedBody(handler: Handler): Handler {
+  return async (req, ctx) => {
+    const contentType = req.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      try {
+        const raw = await req.json();
+        const { sanitizeBody } = await import("@/lib/sanitize");
+        const sanitized = sanitizeBody(raw);
+        // Reconstruct the request with the sanitized body
+        const newReq = new NextRequest(req.url, {
+          method: req.method,
+          headers: req.headers,
+          body: JSON.stringify(sanitized),
+        });
+        return handler(newReq, ctx);
+      } catch {
+        // If JSON parsing fails, pass through — downstream handler will reject it
+        return handler(req, ctx);
+      }
+    }
+    return handler(req, ctx);
+  };
+}
+
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60; // 24 hours
 
 /**

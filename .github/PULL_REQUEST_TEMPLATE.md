@@ -15,4 +15,5 @@ Closes #
 - [ ] Lint passes (`npm run lint`)
 - [ ] Types pass (`npm run type-check`)
 - [ ] Contract tests pass (`npm run contract:test`) if applicable
+- [ ] Webhook signature verifications use timing-safe comparisons (`crypto.timingSafeEqual`)
 - [ ] No secrets committed

@@ -1,3 +1,4 @@
+// .
 import { notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -102,6 +103,7 @@ export default async function CircleDetailPage({ params }: Props) {
           <div>
             <h1 className={styles.title}>{circle.name}</h1>
             <CircleStatusBadge status={circle.status} />
+            {circle.description && <p className={styles.description}>{circle.description}</p>}
           </div>
           {userId && (
             <CircleActions
@@ -223,3 +225,4 @@ export default async function CircleDetailPage({ params }: Props) {
     </div>
   );
 }
+// .

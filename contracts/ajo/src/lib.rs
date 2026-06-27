@@ -31,6 +31,9 @@ const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
 const INSTANCE_LIFETIME_THRESHOLD: u32 = DAY_IN_LEDGERS;
 const PERSISTENT_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 7 * DAY_IN_LEDGERS;
+// Temporary storage TTL: 90 days covers the longest possible circle cycle + buffer
+const TEMP_STORAGE_BUMP_AMOUNT: u32 = 90 * DAY_IN_LEDGERS;
+const TEMP_STORAGE_LIFETIME_THRESHOLD: u32 = 7 * DAY_IN_LEDGERS;
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 
@@ -72,6 +75,15 @@ pub enum DataKey {
     PayoutLock,
 }
 
+// ─── Error types ──────────────────────────────────────────────────────────────
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub enum ContractError {
+    /// `payout_amount != contribution_amount * max_members` — arithmetic invariant violated.
+    InvalidPayoutAmount,
+}
+
 // ─── Contract ─────────────────────────────────────────────────────────────────
 
 #[contract]
@@ -83,11 +95,18 @@ impl AjoContract {
 
     /// Initialize the circle.
     ///
+    /// # Arguments
     /// * `admin`               – address that controls admin operations
     /// * `token`               – USDC token contract address
     /// * `contribution_amount` – USDC amount per member per cycle (in stroops)
-    /// * `max_members`         – total number of members (= total cycles)
-    /// * `cycle_interval_secs` – seconds between payouts (e.g. 2592000 = 30 days)
+    /// * `max_members`         – total number of members (= total cycles); must be 2–20
+    /// * `cycle_interval_secs` – seconds between payouts (e.g. `2_592_000` = 30 days)
+    ///
+    /// # Errors
+    /// Panics with:
+    /// - `"AlreadyInitialized"` if called more than once
+    /// - `"max_members must be between 2 and 20"` if the cap is out of range
+    /// - `"contribution_amount must be positive"` if `contribution_amount <= 0`
     pub fn initialize(
         env: Env,
         admin: Address,
@@ -129,6 +148,18 @@ impl AjoContract {
     // ── Member operations ─────────────────────────────────────────────────────
 
     /// Join the circle. Transfers the first contribution into the contract.
+    ///
+    /// Requires `member` authorization. When the last allowed member joins, the
+    /// circle starts automatically and `current_cycle` advances to `1`.
+    ///
+    /// # Arguments
+    /// * `member` – address of the joining member
+    ///
+    /// # Errors
+    /// Panics with:
+    /// - `"circle already started"` if `current_cycle > 0`
+    /// - `"circle is full"` if the member cap has been reached
+    /// - `"already a member"` if `member` has already joined
     pub fn join(env: Env, member: Address) {
         Self::extend_instance_ttl(&env);
         member.require_auth();
@@ -177,6 +208,18 @@ impl AjoContract {
     ///
     /// The caller must pass the exact `ContributionAmount`; the contract
     /// rejects any other value to prevent under- and over-contributions.
+    ///
+    /// # Arguments
+    /// * `member` – address of the contributing member (must already have joined)
+    /// * `amount` – must equal `ContributionAmount` exactly
+    ///
+    /// # Errors
+    /// Panics with:
+    /// - `"contract is paused"` while an emergency pause is active
+    /// - `"contribution amount must equal required amount"` if `amount` differs
+    /// - `"circle not started yet"` if `current_cycle == 0`
+    /// - `"not a member"` if `member` is not in the members list
+    /// - `"already contributed this cycle"` if the member has already paid this cycle
     pub fn contribute(env: Env, member: Address, amount: i128) {
         Self::extend_instance_ttl(&env);
         member.require_auth();
@@ -215,6 +258,8 @@ impl AjoContract {
 
         // Store contribution in temporary storage (lower ledger fees)
         Self::set_temp_contribution(&env, &member, current_cycle, true);
+        // Bump TTL on contribution key to prevent expiry mid-cycle
+        Self::extend_temp_storage_ttl(&env, &member, current_cycle);
 
         let next_payout_time: u64 = env.storage().instance().get(&DataKey::NextPayoutTime).expect("not initialized");
         let is_on_time = env.ledger().timestamp() < next_payout_time;
@@ -250,6 +295,18 @@ impl AjoContract {
     // ── Admin operations ──────────────────────────────────────────────────────
 
     /// Set payout order. Admin-only.
+    ///
+    /// Must be called before the circle starts (`current_cycle == 0`).
+    /// Each element of `order` is a zero-based index into the members list.
+    ///
+    /// # Arguments
+    /// * `order` – permutation of member indices defining who receives the pot each cycle
+    ///
+    /// # Errors
+    /// Panics with:
+    /// - `"not initialized"` if the contract has not been initialized
+    /// - `"cannot set payout order after circle starts"` if `current_cycle > 0`
+    /// - `"payout order length must equal max_members"` if `order.len() != max_members`
     pub fn set_payout_order(env: Env, order: Vec<u32>) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
         admin.require_auth();
@@ -269,10 +326,24 @@ impl AjoContract {
 
     /// Trigger payout to the current cycle's recipient. Admin-only, callable after next_payout_time.
     ///
+    /// Transfers `contribution_amount × max_members` (the full pot) to the recipient
+    /// determined by the payout order for the current cycle. Advances the cycle counter
+    /// and schedules the next payout. On the final cycle, marks the circle as completed
+    /// and clears temporary contribution storage.
+    ///
     /// # Security – Reentrancy Guard (issue #264)
     /// A `PayoutLock` flag is set at the start and cleared at the end.
     /// The contract follows checks-effects-interactions: all state mutations
     /// occur before the external token transfer.
+    ///
+    /// # Errors
+    /// Panics with:
+    /// - `"contract is paused"` while an emergency pause is active
+    /// - `"payout already in progress"` if the reentrancy guard is set
+    /// - `"not initialized"` if the contract has not been initialized
+    /// - `"circle already completed"` if all payouts have been distributed
+    /// - `"circle not started"` if `current_cycle == 0`
+    /// - `"payout time not reached"` if called before `next_payout_time`
     pub fn payout(env: Env) {
         Self::extend_instance_ttl(&env);
 
@@ -345,7 +416,18 @@ impl AjoContract {
 
         let token: Address = env.storage().instance().get(&DataKey::Token).expect("not initialized");
         let contribution: i128 = env.storage().instance().get(&DataKey::ContributionAmount).expect("not initialized");
-        let pot = contribution * (max_members as i128);
+
+        // ─── Invariant: payout_amount == contribution_amount * max_members ────────
+        // checked_mul guards against i128 overflow; if it fails the arithmetic is
+        // inconsistent with stored parameters and we must not transfer.
+        let pot: i128 = match contribution.checked_mul(max_members as i128) {
+            Some(p) => p,
+            None => panic!("InvalidPayoutAmount"),
+        };
+        // Secondary assertion: pot must be strictly positive
+        if pot <= 0 {
+            panic!("InvalidPayoutAmount");
+        }
 
         // ─── Effects before external call ─────────────────────────────────────
         if current_cycle >= max_members {
@@ -442,7 +524,13 @@ impl AjoContract {
         );
     }
 
-    /// Read-only: get reputation score for a member (0-100)
+    /// Read-only: get reputation score for a member.
+    ///
+    /// # Arguments
+    /// * `member` – address to query
+    ///
+    /// # Returns
+    /// An integer in the range `0–100`. Returns `0` if the member has no history.
     pub fn get_reputation(env: Env, member: Address) -> u32 {
         env.storage()
             .persistent()
@@ -450,7 +538,14 @@ impl AjoContract {
             .unwrap_or(0)
     }
 
-    /// Read-only: get detailed reputation stats for a member
+    /// Read-only: get detailed reputation stats for a member.
+    ///
+    /// # Arguments
+    /// * `member` – address to query
+    ///
+    /// # Returns
+    /// `(reputation, circles_completed, on_time_contributions, total_contributions)`
+    /// All values default to `0` if the member has no recorded history.
     pub fn get_reputation_stats(env: Env, member: Address) -> (u32, u32, u32, u32) {
         let reputation: u32 = env
             .storage()
@@ -541,6 +636,15 @@ impl AjoContract {
 
     // ── Read-only ─────────────────────────────────────────────────────────────
 
+    /// Read current circle state.
+    ///
+    /// # Returns
+    /// A tuple of `(current_cycle, max_members, next_payout_time, completed, paused)`:
+    /// - `current_cycle` – cycle counter; `0` means the circle has not started yet
+    /// - `max_members`   – total number of members (equals total number of cycles)
+    /// - `next_payout_time` – Unix timestamp of the next scheduled payout; `0` before start
+    /// - `completed`     – `true` once all payouts have been distributed
+    /// - `paused`        – `true` while the contract is under emergency pause
     pub fn get_state(env: Env) -> (u32, u32, u64, bool) {
         let current_cycle: u32 = env.storage().instance().get(&DataKey::CurrentCycle).unwrap_or(0);
         let max_members: u32 = env.storage().instance().get(&DataKey::MaxMembers).unwrap_or(0);
@@ -550,10 +654,18 @@ impl AjoContract {
         (current_cycle, max_members, next_payout_time, completed, paused)
     }
 
+    /// Read-only: return all member addresses in join order.
+    ///
+    /// Returns an empty `Vec` if no members have joined yet.
     pub fn get_members(env: Env) -> Vec<Address> {
         env.storage().instance().get(&DataKey::Members).unwrap_or(vec![&env])
     }
 
+    /// Read-only: return the configured payout order.
+    ///
+    /// Each element is a zero-based index into the members list.
+    /// Returns an empty `Vec` when no explicit order has been set (the contract
+    /// then defaults to join order during `payout`).
     pub fn get_payout_order(env: Env) -> Vec<u32> {
         env.storage().instance().get(&DataKey::PayoutOrder).unwrap_or(vec![&env])
     }
@@ -603,6 +715,14 @@ impl AjoContract {
     }
 
     /// Set TTL configuration. Admin-only.
+    ///
+    /// Overrides the compile-time defaults for instance-storage TTL management.
+    /// Call before any operation that triggers `extend_instance_ttl` if you need
+    /// custom ledger-lifetime values (e.g., in tests).
+    ///
+    /// # Arguments
+    /// * `threshold`  – ledger count below which TTL extension is triggered
+    /// * `extend_to`  – target ledger count after extension
     pub fn set_ttl_config(env: Env, threshold: u32, extend_to: u32) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
         admin.require_auth();
@@ -611,18 +731,38 @@ impl AjoContract {
         env.storage().instance().set(&DataKey::TtlExtendTo, &extend_to);
     }
 
-    /// Set contribution status in temporary storage (expires when circle completes)
-    /// This reduces ledger footprint compared to instance storage.
+    /// Store contribution status in temporary storage (expires when circle completes).
+    ///
+    /// Temporary storage costs fewer ledger fees than instance storage and is
+    /// automatically garbage-collected after its TTL.
+    ///
+    /// # Arguments
+    /// * `member`      – address of the contributing member
+    /// * `cycle`       – cycle number for which to record the status
+    /// * `contributed` – `true` to mark as paid, `false` to clear
     fn set_temp_contribution(env: &Env, member: &Address, cycle: u32, contributed: bool) {
         env.storage().temporary().set(&DataKey::Contributions(member.clone(), cycle), &contributed);
     }
 
-    /// Get contribution status from temporary storage
+    /// Retrieve contribution status from temporary storage.
+    ///
+    /// Returns `false` when the entry is absent (not yet contributed or already expired).
+    ///
+    /// # Arguments
+    /// * `member` – address of the member to query
+    /// * `cycle`  – cycle number to query
     fn get_temp_contribution(env: &Env, member: &Address, cycle: u32) -> bool {
         env.storage().temporary().get(&DataKey::Contributions(member.clone(), cycle)).unwrap_or(false)
     }
 
-    /// Clear all temporary contribution entries (call when circle completes)
+    /// Remove all temporary contribution entries when the circle completes.
+    ///
+    /// Iterates over every `(member, cycle)` pair and removes the corresponding
+    /// temporary storage entry, reducing the contract's on-chain footprint.
+    ///
+    /// # Arguments
+    /// * `members`     – slice of all member addresses
+    /// * `max_members` – total cycle count (upper bound of the loop)
     fn clear_temp_contributions(env: &Env, members: &Vec<Address>, max_members: u32) {
         for cycle in 1..=max_members {
             for member in members.iter() {
@@ -631,6 +771,10 @@ impl AjoContract {
         }
     }
 
+    /// Extend the instance-storage TTL using configured (or default) thresholds.
+    ///
+    /// Called at the start of every mutating entry point to ensure the contract's
+    /// core configuration survives for at least `extend_to` ledgers.
     fn extend_instance_ttl(env: &Env) {
         let threshold = env.storage().instance().get(&DataKey::TtlThreshold).unwrap_or(INSTANCE_LIFETIME_THRESHOLD);
         let extend_to = env.storage().instance().get(&DataKey::TtlExtendTo).unwrap_or(INSTANCE_BUMP_AMOUNT);
@@ -640,13 +784,26 @@ impl AjoContract {
             .extend_ttl(threshold, extend_to);
     }
 
-    /// Extend TTL for temporary storage entries when needed
-    /// Temporary storage uses lower TTL defaults for automatic cleanup
+    /// Extend TTL for a single temporary contribution entry.
+    ///
+    /// Uses a 1-day threshold and 7-day extension — sufficient for the duration
+    /// of a single cycle — keeping the cost lower than instance-storage TTL bumps.
+    ///
+    /// # Arguments
+    /// * `member` – address whose contribution entry should be extended
+    /// * `cycle`  – cycle number of the entry to extend
     fn extend_temp_storage_ttl(env: &Env, member: &Address, cycle: u32) {
         let temp_entry = DataKey::Contributions(member.clone(), cycle);
-        env.storage().temporary().extend_ttl(&temp_entry, DAY_IN_LEDGERS, 7 * DAY_IN_LEDGERS);
+        env.storage().temporary().extend_ttl(&temp_entry, TEMP_STORAGE_LIFETIME_THRESHOLD, TEMP_STORAGE_BUMP_AMOUNT);
     }
 
+    /// Extend the TTL of a persistent storage entry.
+    ///
+    /// Uses `PERSISTENT_LIFETIME_THRESHOLD` / `PERSISTENT_BUMP_AMOUNT` to keep
+    /// member reputation data alive across contract upgrades and long idle periods.
+    ///
+    /// # Arguments
+    /// * `key` – the `DataKey` of the persistent entry to extend
     fn extend_persistent_ttl(env: &Env, key: &DataKey) {
         env.storage()
             .persistent()
