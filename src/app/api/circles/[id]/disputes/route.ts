@@ -4,15 +4,13 @@ import { authOptions } from "@/lib/auth";
 import { withErrorHandler, withSanitizedBody } from "@/server/middleware";
 import { getDisputesByCircle, createDispute } from "@/server/services/dispute.service";
 import { getCircleById } from "@/server/services/circle.service";
+import { createDisputeSchema } from "@/types/schemas";
 import type { ApiResponse, Dispute } from "@/types";
 import { z } from "zod";
 
-const CreateDisputeSchema = z.object({
+const CreateDisputeSchema = createDisputeSchema.extend({
   contributionId: z.string().uuid().optional(),
   memberId: z.string().uuid(),
-  type: z.enum(["missed_payout", "wrong_amount", "other"]).default("other"),
-  reason: z.string().min(10).max(500),
-  evidence: z.string().max(1000).optional(),
   paystackReference: z.string().optional(),
 });
 

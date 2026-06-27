@@ -34,6 +34,11 @@ self.addEventListener("fetch", (event) => {
   // Only handle same-origin GET requests
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
 
+  if (url.pathname === "/offline") {
+    event.respondWith(caches.match("/offline"));
+    return;
+  }
+
   // Network-first for API routes
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(

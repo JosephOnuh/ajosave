@@ -42,6 +42,7 @@ export type PayoutMethod = "fixed" | "randomized";
 export interface Circle {
   id: string;
   name: string;
+  description?: string;
   creatorId: string;
   contributionUsdc: string; // per-member per-cycle amount
   contributionFiat: number; // renamed from contributionNgn
@@ -74,6 +75,7 @@ export interface Member {
   circleId: string;
   userId: string;
   displayName?: string; // joined from users table
+  stellarPublicKey?: string | null; // joined from users table (shown to circle creator)
   position: number | null; // payout order (1 = first to receive), null for pending members
   status: MemberStatus;
   hasReceivedPayout: boolean;

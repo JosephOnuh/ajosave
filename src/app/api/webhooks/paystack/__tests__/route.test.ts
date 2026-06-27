@@ -131,7 +131,7 @@ describe("POST /api/webhooks/paystack", () => {
   it("marks contribution as failed on charge.failed", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 } as any);
 
-    const req = makeRequest({ event: "charge.failed", data: { reference: "ajo-circle-1-member-1-2" } });
+    const req = makeRequest({ id: "evt_999", event: "charge.failed", data: { reference: "ajo-circle-1-member-1-2" } });
     const res = await POST(req);
     expect(res.status).toBe(200);
     expect(mockQuery).toHaveBeenCalledWith(

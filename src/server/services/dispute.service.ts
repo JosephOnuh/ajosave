@@ -108,6 +108,36 @@ export async function resolveDispute(
   return rows[0];
 }
 
+export async function notifyDisputeParties(
+  disputeId: string,
+  status: DisputeStatus,
+  resolutionNotes?: string
+): Promise<void> {
+  const { rows } = await query<{ userId: string; circleId: string }>(
+    `SELECT member_id as "memberId", circle_id as "circleId",
+            (SELECT user_id FROM members WHERE id = disputes.member_id) as "userId"
+     FROM disputes WHERE id = $1`,
+    [disputeId]
+  );
+  const dispute = rows[0];
+  if (!dispute?.userId) return;
+
+  const { sendEmail } = await import("@/lib/email");
+  const { rows: userRows } = await query<{ email: string | null; displayName: string }>(
+    `SELECT email, display_name AS "displayName" FROM users WHERE id = $1`,
+    [dispute.userId]
+  );
+  const user = userRows[0];
+  if (!user?.email) return;
+
+  const statusLabel = status === "resolved" ? "Resolved" : status === "rejected" ? "Rejected" : "Under Review";
+  await sendEmail({
+    to: user.email,
+    subject: `Dispute ${statusLabel}`,
+    html: `<p>Hi ${user.displayName}, your dispute has been marked <strong>${statusLabel}</strong>.</p>${resolutionNotes ? `<p>Notes: ${resolutionNotes}</p>` : ""}`,
+  }).catch((err) => console.error("[dispute] notify user failed:", err));
+}
+
 export async function confirmContributionFromDispute(
   disputeId: string,
   contributionId: string,

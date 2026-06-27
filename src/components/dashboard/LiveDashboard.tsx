@@ -102,8 +102,8 @@ export function LiveDashboard({ initialCircles }: LiveDashboardProps) {
           title="Start your savings journey"
           description="You haven't joined any circles yet. Create your own or browse open circles to get started."
           ctas={[
-            { label: "Create your first circle", href: "/circles/create", variant: "primary" },
-            { label: "Browse circles", href: "/circles", variant: "secondary" },
+            { label: "Create Circle", href: "/circles/create", variant: "primary" },
+            { label: "Browse Circles", href: "/circles", variant: "secondary" },
           ]}
         />
       ) : (

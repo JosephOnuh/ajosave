@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { withErrorHandler, withRateLimit } from "@/server/middleware";
 import { verifyOtpSchema } from "@/types/schemas";
 import { getRedis } from "@/lib/redis";
+import { encrypt, hmacIndex, decrypt } from "@/lib/encryption";
 import { getLockoutStatus, recordFailure, resetLockout } from "@/lib/lockout";
+import { hmacIndex } from "@/lib/encryption";
 import { query } from "@/lib/db";
 import type { ApiResponse } from "@/types";
 
@@ -111,7 +113,7 @@ export const POST = withRateLimit(
 
     // Verify OTP from Redis
     const redis = await getRedis();
-    const storedOtp = await redis.get(`otp:${phone}`);
+    const storedOtp = await redis.get(`otp:${hmacIndex(phone)}`);
 
     if (!storedOtp || storedOtp !== otp) {
       // Record failure and get updated status
@@ -138,27 +140,35 @@ export const POST = withRateLimit(
 
     // OTP is valid - reset failure tracking and delete OTP
     await resetLockout(phone);
-    await redis.del(`otp:${phone}`);
+    await redis.del(`otp:${hmacIndex(phone)}`);
 
-    // Load or create user
+    // Load or create user using encrypted phone + blind index
+    const phoneHash = hmacIndex(phone);
     let user = await query<{ id: string; phone: string; display_name: string; role: string }>(
-      "SELECT id, phone, display_name, role FROM users WHERE phone = $1",
-      [phone]
+      "SELECT id, phone, display_name, role FROM users WHERE phone_hash = $1",
+      [phoneHash]
     );
 
     if (user.rows.length === 0) {
-      // Create user on first successful OTP verification
+      // Create user on first successful OTP verification (store encrypted phone + hash)
+      const encrypted = encrypt(phone);
       const result = await query<{ id: string; phone: string; display_name: string; role: string }>(
-        `INSERT INTO users (id, phone, display_name, role, reputation_score, created_at)
-         VALUES (gen_random_uuid(), $1, 'Ajosave User', 'user', 0, NOW())
-         ON CONFLICT (phone) DO UPDATE SET phone = EXCLUDED.phone
+        `INSERT INTO users (id, phone, phone_hash, display_name, role, reputation_score, created_at)
+         VALUES (gen_random_uuid(), $1, $2, 'Ajosave User', 'user', 0, NOW())
+         ON CONFLICT (phone_hash) DO UPDATE SET phone = EXCLUDED.phone
          RETURNING id, phone, display_name, role`,
-        [phone]
+        [encrypted, phoneHash]
       );
       user = result;
     }
 
     const userData = user.rows[0];
+    let decryptedPhone = userData.phone;
+    try {
+      decryptedPhone = decrypt(userData.phone);
+    } catch {
+      // If decrypt fails, fall back to stored value (should not happen once keys present)
+    }
 
     return NextResponse.json<ApiResponse<VerifyOtpResponse>>(
       {
@@ -167,7 +177,7 @@ export const POST = withRateLimit(
           message: "OTP verified successfully",
           user: {
             id: userData.id,
-            phone: userData.phone,
+            phone: decryptedPhone,
             displayName: userData.display_name,
             role: userData.role,
           },
