@@ -2,6 +2,7 @@ import { query, transaction } from "@/lib/db";
 import { sendUsdcPayment, validateStellarRecipient } from "@/lib/stellar";
 import { invokeContractPayout } from "@/lib/soroban";
 import { getCircleById, getMembersByCircle, updateCircleStatus } from "./circle.service";
+import { usdcToStroops, stroopsToUsdc } from "@/lib/currency";
 import { withPayoutLock, PayoutLockError } from "./payout-lock";
 import { notifyPayoutProcessed, notifyCircleCompleted } from "./notification.service";
 import { mintCertificate } from "./certificate.service";
@@ -49,9 +50,9 @@ export async function processCyclePayout(
 
     const circleMembers = await getMembersByCircle(circleId);
     const activeMembers = circleMembers.filter((m) => m.status === "active");
-    const totalPot = (
-      parseFloat(circle.contributionUsdc) * activeMembers.length
-    ).toFixed(7);
+    const totalPot = stroopsToUsdc(
+      usdcToStroops(circle.contributionUsdc) * BigInt(activeMembers.length)
+    );
 
     const recipientMember = circleMembers.find(
       (m) => m.position === circle.currentCycle && m.status === "active"
