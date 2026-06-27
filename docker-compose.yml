@@ -43,7 +43,7 @@ services:
       --maxmemory-policy allkeys-lru
       --save ""
     volumes:
-      - redis_data:/data
+      - redis_data:/data   # /data is where Redis writes appendonly.aof
     ports:
       - "6379:6379"
     healthcheck:
