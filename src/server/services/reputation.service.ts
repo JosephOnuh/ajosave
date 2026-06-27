@@ -1,8 +1,9 @@
 import { query } from "@/lib/db";
 import { getOnChainReputation } from "@/lib/reputation";
 
-// Score adjustments (kept for backward-compat callers that still use DB fallback)
-const SCORE_DECREMENT = 10;
+// Score adjustments.
+const SCORE_INCREMENT = 5; // Points added on-time contribution
+const SCORE_DECREMENT = 10; // Points deducted on missed contribution
 const MIN_SCORE = 0;
 
 /**
