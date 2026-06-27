@@ -1,5 +1,5 @@
 /**
- * KYC integration — Issue #129
+ * KYC integration — Issue #129 / #547
  *
  * Thin wrapper around the Smile Identity Web API v2.
  * Flow:
@@ -8,15 +8,32 @@
  *   2. Smile Identity calls POST /api/v1/kyc/webhook with the result.
  *   3. handleKycWebhook() verifies the HMAC signature and upserts kyc_status.
  *
- * Required env vars:
- *   SMILE_PARTNER_ID    — your Smile Identity partner ID
- *   SMILE_API_KEY       — Smile Identity API key (used for HMAC verification)
- *   SMILE_CALLBACK_URL  — full URL to /api/v1/kyc/webhook
+ * Key storage (in priority order — Issue #547):
+ *   1. SMILE_API_KEY_SECRET_ARN — AWS Secrets Manager secret ARN (recommended for production)
+ *   2. SMILE_API_KEY            — plain env var fallback (dev / CI)
+ *
+ * The api_key is NEVER included in log output.
  */
 import { createHmac, timingSafeEqual } from "crypto";
 import { query } from "./db";
 import logger from "./logger";
 import { redactLogObject } from "./sanitize";
+
+/** Fetch the Smile Identity API key from AWS Secrets Manager or env. */
+async function getSmileApiKey(): Promise<string> {
+  const arn = process.env.SMILE_API_KEY_SECRET_ARN;
+  if (arn) {
+    // Lazy-require so the SDK is only needed in environments that use it.
+    const { SecretsManagerClient, GetSecretValueCommand } = await import(
+      "@aws-sdk/client-secrets-manager"
+    );
+    const client = new SecretsManagerClient({});
+    const { SecretString } = await client.send(new GetSecretValueCommand({ SecretId: arn }));
+    if (!SecretString) throw new Error("AWS Secrets Manager returned empty secret");
+    return SecretString;
+  }
+  return requireEnv("SMILE_API_KEY");
+}
 
 const BASE_URL = "https://testapi.smileidentity.com/v1";
 
@@ -25,7 +42,7 @@ export type KycStatus = "none" | "pending" | "approved" | "rejected";
 /** Initiate a KYC session; returns the web-token for the Smile Identity widget. */
 export async function initiateKyc(userId: string): Promise<{ token: string }> {
   const partnerId = requireEnv("SMILE_PARTNER_ID");
-  const apiKey = requireEnv("SMILE_API_KEY");
+  const apiKey = await getSmileApiKey();
   const callbackUrl = requireEnv("SMILE_CALLBACK_URL");
 
   const res = await fetch(`${BASE_URL}/token`, {
@@ -74,7 +91,7 @@ export interface SmileWebhookPayload {
 export async function handleKycWebhook(
   payload: SmileWebhookPayload
 ): Promise<{ userId: string; status: KycStatus }> {
-  const apiKey = requireEnv("SMILE_API_KEY");
+  const apiKey = await getSmileApiKey();
   const partnerId = requireEnv("SMILE_PARTNER_ID");
 
   // Smile Identity signature: HMAC-SHA256 of "timestamp:partner_id"
@@ -124,4 +141,10 @@ function requireEnv(name: string): string {
   const val = process.env[name];
   if (!val) throw new Error(`Missing required env var: ${name}`);
   return val;
+}
+
+/** Replace every occurrence of `secret` in `text` with [REDACTED]. */
+export function redactKey(text: string, secret: string): string {
+  if (!secret) return text;
+  return text.split(secret).join("[REDACTED]");
 }
