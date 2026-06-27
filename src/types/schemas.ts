@@ -37,8 +37,13 @@ export const smsPreferencesSchema = z.object({
   enabled: z.boolean({ invalid_type_error: "enabled must be a boolean" }),
 });
 
+export const horizonStreamSchema = z.object({
+  action: z.enum(["start", "stop"]),
+});
+
 export type CreateCircleInput = z.infer<typeof createCircleSchema>;
 export type JoinCircleInput = z.infer<typeof joinCircleSchema>;
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
 export type SendOtpInput = z.infer<typeof sendOtpSchema>;
 export type SmsPreferencesInput = z.infer<typeof smsPreferencesSchema>;
+export type HorizonStreamInput = z.infer<typeof horizonStreamSchema>;
