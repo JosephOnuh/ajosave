@@ -31,6 +31,9 @@ const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
 const INSTANCE_LIFETIME_THRESHOLD: u32 = DAY_IN_LEDGERS;
 const PERSISTENT_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 7 * DAY_IN_LEDGERS;
+// Temporary storage TTL: 90 days covers the longest possible circle cycle + buffer
+const TEMP_STORAGE_BUMP_AMOUNT: u32 = 90 * DAY_IN_LEDGERS;
+const TEMP_STORAGE_LIFETIME_THRESHOLD: u32 = 7 * DAY_IN_LEDGERS;
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 
@@ -255,6 +258,8 @@ impl AjoContract {
 
         // Store contribution in temporary storage (lower ledger fees)
         Self::set_temp_contribution(&env, &member, current_cycle, true);
+        // Bump TTL on contribution key to prevent expiry mid-cycle
+        Self::extend_temp_storage_ttl(&env, &member, current_cycle);
 
         let next_payout_time: u64 = env.storage().instance().get(&DataKey::NextPayoutTime).expect("not initialized");
         let is_on_time = env.ledger().timestamp() < next_payout_time;
@@ -789,7 +794,7 @@ impl AjoContract {
     /// * `cycle`  – cycle number of the entry to extend
     fn extend_temp_storage_ttl(env: &Env, member: &Address, cycle: u32) {
         let temp_entry = DataKey::Contributions(member.clone(), cycle);
-        env.storage().temporary().extend_ttl(&temp_entry, DAY_IN_LEDGERS, 7 * DAY_IN_LEDGERS);
+        env.storage().temporary().extend_ttl(&temp_entry, TEMP_STORAGE_LIFETIME_THRESHOLD, TEMP_STORAGE_BUMP_AMOUNT);
     }
 
     /// Extend the TTL of a persistent storage entry.
