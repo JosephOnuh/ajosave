@@ -6,7 +6,7 @@
   height: 2rem;
   border-radius: var(--radius-full);
   background: var(--color-brand-primary);
-  color: #fff;
+  color: var(--color-on-brand);
   font-size: var(--text-xs);
   font-weight: var(--font-bold);
   flex-shrink: 0;

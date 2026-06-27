@@ -1,0 +1,115 @@
+name: Backup Restore Validation
+
+on:
+  schedule:
+    - cron: "0 4 * * 0"   # Weekly Sunday 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  restore-test:
+    name: Restore & Validate
+    runs-on: ubuntu-latest
+    environment: production
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ajosave
+          POSTGRES_PASSWORD: ajosave
+          POSTGRES_DB: ajosave_restore_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_BACKUP_REGION }}
+
+      - name: Install postgres client
+        run: sudo apt-get install -y postgresql-client
+
+      - name: Fetch latest backup from S3
+        id: fetch
+        env:
+          S3_BACKUP_BUCKET: ${{ secrets.S3_BACKUP_BUCKET }}
+        run: |
+          LATEST=$(aws s3 ls "s3://${S3_BACKUP_BUCKET}/backups/postgres/" \
+            | sort | tail -1 | awk '{print $4}')
+          echo "backup_key=${LATEST}" >> "$GITHUB_OUTPUT"
+          aws s3 cp "s3://${S3_BACKUP_BUCKET}/backups/postgres/${LATEST}" /tmp/latest_backup.sql.gz
+          echo "downloaded=${LATEST}"
+
+      - name: Verify backup hash
+        run: |
+          EXPECTED=$(aws s3api head-object \
+            --bucket "${{ secrets.S3_BACKUP_BUCKET }}" \
+            --key "backups/postgres/${{ steps.fetch.outputs.backup_key }}" \
+            --query 'Metadata.sha256' --output text 2>/dev/null || echo '')
+          if [[ -n "$EXPECTED" && "$EXPECTED" != "None" ]]; then
+            ACTUAL=$(sha256sum /tmp/latest_backup.sql.gz | awk '{print $1}')
+            if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+              echo "::error::Hash mismatch — backup may be corrupt (expected=$EXPECTED actual=$ACTUAL)"
+              exit 1
+            fi
+            echo "Hash verified: $ACTUAL"
+          else
+            echo "No hash metadata found — skipping hash check"
+          fi
+
+      - name: Restore backup to ephemeral DB
+        env:
+          PGPASSWORD: ajosave
+        run: |
+          gunzip -c /tmp/latest_backup.sql.gz \
+            | psql -h localhost -p 5432 -U ajosave -d ajosave_restore_test
+
+      - name: Schema integrity check
+        env:
+          PGPASSWORD: ajosave
+        run: |
+          TABLES=$(psql -h localhost -p 5432 -U ajosave -d ajosave_restore_test -t -c \
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';" | xargs)
+          echo "Tables found: $TABLES"
+          if [[ "$TABLES" -lt 1 ]]; then
+            echo "::error::No tables found after restore — schema is empty"
+            exit 1
+          fi
+          for TABLE in users circles members contributions payouts; do
+            EXISTS=$(psql -h localhost -p 5432 -U ajosave -d ajosave_restore_test -t -c \
+              "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='${TABLE}');" | xargs)
+            if [[ "$EXISTS" != "t" ]]; then
+              echo "::error::Expected table '$TABLE' not found after restore"
+              exit 1
+            fi
+          done
+          echo "Schema integrity OK"
+
+      - name: Row count spot-check
+        env:
+          PGPASSWORD: ajosave
+        run: |
+          for TABLE in users circles members; do
+            COUNT=$(psql -h localhost -p 5432 -U ajosave -d ajosave_restore_test -t -c \
+              "SELECT COUNT(*) FROM ${TABLE};" 2>/dev/null | xargs || echo 0)
+            echo "${TABLE}: ${COUNT} rows"
+          done
+
+      - name: Notify on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": ":rotating_light: *Backup restore validation failed* on `${{ github.repository }}`\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK

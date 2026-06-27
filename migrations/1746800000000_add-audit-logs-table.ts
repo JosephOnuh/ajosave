@@ -36,7 +36,8 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     },
     details: {
       type: "jsonb",
-      default: "'{}'::jsonb",
+      default: pgm.func("'{}'::jsonb"),
+
     },
     ip_address: {
       type: "varchar(45)",

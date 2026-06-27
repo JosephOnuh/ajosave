@@ -15,6 +15,8 @@
  */
 import { createHmac, timingSafeEqual } from "crypto";
 import { query } from "./db";
+import logger from "./logger";
+import { redactLogObject } from "./sanitize";
 
 const BASE_URL = "https://testapi.smileidentity.com/v1";
 
@@ -40,6 +42,10 @@ export async function initiateKyc(userId: string): Promise<{ token: string }> {
 
   if (!res.ok) {
     const text = await res.text();
+    logger.error(
+      redactLogObject({ partner_id: partnerId, api_key: apiKey, callback_url: callbackUrl, user_id: userId }),
+      `Smile Identity token request failed: ${text}`
+    );
     throw new Error(`Smile Identity token request failed: ${text}`);
   }
 
@@ -76,11 +82,12 @@ export async function handleKycWebhook(
     .update(`${payload.timestamp}:${partnerId}`)
     .digest("base64");
 
-  const expectedBuf = Buffer.from(expected);
-  const receivedBuf = Buffer.from(payload.signature);
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(payload.signature || "");
+
   if (
-    expectedBuf.length !== receivedBuf.length ||
-    !timingSafeEqual(expectedBuf, receivedBuf)
+    expectedBuffer.length !== signatureBuffer.length ||
+    !timingSafeEqual(expectedBuffer, signatureBuffer)
   ) {
     throw new Error("Invalid Smile Identity webhook signature");
   }

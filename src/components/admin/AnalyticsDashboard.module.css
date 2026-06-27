@@ -14,8 +14,8 @@
 }
 
 .exportBtn {
-  background: var(--color-brand-primary, #0f7a4a);
-  color: #ffffff;
+  background: var(--color-brand-primary);
+  color: var(--color-on-brand);
   border: none;
   border-radius: var(--radius-md, 8px);
   padding: var(--space-3, 10px) var(--space-5, 18px);
@@ -30,7 +30,7 @@
 }
 
 .exportBtn:hover {
-  background: #0d683e;
+  background: var(--color-brand-primary-hover);
   transform: translateY(-1px);
   box-shadow: 0 6px 8px -1px rgba(15, 122, 74, 0.3);
 }
@@ -47,8 +47,8 @@
 }
 
 .metricCard {
-  background: var(--color-bg-elevated, #ffffff);
-  border: 1px solid var(--color-border-subtle, #f0f0f0);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-xl, 16px);
   padding: var(--space-6, 24px);
   display: flex;
@@ -66,7 +66,7 @@
   left: 0;
   width: 4px;
   height: 100%;
-  background: var(--color-border, #e2e8f0);
+  background: var(--color-border);
 }
 
 .metricCard.saved::after {
@@ -87,14 +87,14 @@
 
 .metricCard:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
-  border-color: var(--color-border, #cbd5e1);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-border);
 }
 
 .metricLabel {
   font-size: var(--text-xs, 12px);
   font-weight: var(--font-semibold, 600);
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -102,12 +102,12 @@
 .metricValue {
   font-size: var(--text-2xl, 28px);
   font-weight: var(--font-bold, 700);
-  color: var(--color-text-primary, #0f172a);
+  color: var(--color-text-primary);
 }
 
 .metricSubtitle {
   font-size: var(--text-xs, 12px);
-  color: var(--color-text-muted, #94a3b8);
+  color: var(--color-text-muted);
 }
 
 .chartsGrid {
@@ -124,8 +124,8 @@
 }
 
 .chartCard {
-  background: var(--color-bg-elevated, #ffffff);
-  border: 1px solid var(--color-border-subtle, #f0f0f0);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-xl, 16px);
   padding: var(--space-6, 24px);
   display: flex;
@@ -143,12 +143,12 @@
 .chartTitle {
   font-size: var(--text-base, 16px);
   font-weight: var(--font-bold, 700);
-  color: var(--color-text-primary, #0f172a);
+  color: var(--color-text-primary);
 }
 
 .chartSubtitle {
   font-size: var(--text-xs, 12px);
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-secondary);
 }
 
 .chartBody {
@@ -188,7 +188,7 @@
 
 .donutBg {
   fill: none;
-  stroke: var(--color-bg-elevated, #f1f5f9);
+  stroke: var(--color-bg-elevated);
   stroke-width: 12;
 }
 
@@ -200,12 +200,11 @@
 }
 
 .donutVal.success {
-  stroke: linear-gradient(to right, #10b981, #059669);
-  stroke: #10b981;
+  stroke: var(--color-success);
 }
 
 .donutVal.danger {
-  stroke: #ef4444;
+  stroke: var(--color-error);
 }
 
 .donutTextContainer {
@@ -222,19 +221,19 @@
 .donutPercent {
   font-size: var(--text-xl, 20px);
   font-weight: var(--font-bold, 700);
-  color: var(--color-text-primary, #0f172a);
+  color: var(--color-text-primary);
 }
 
 .donutLabel {
   font-size: var(--text-xs, 12px);
   font-weight: var(--font-semibold, 600);
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-secondary);
   margin-top: var(--space-1);
 }
 
 .tableSection {
-  background: var(--color-bg-elevated, #ffffff);
-  border: 1px solid var(--color-border-subtle, #f0f0f0);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-xl, 16px);
   padding: var(--space-6, 24px);
   display: flex;
@@ -261,17 +260,17 @@
   width: 100%;
   padding: var(--space-3, 10px) var(--space-4, 16px);
   padding-left: var(--space-10, 40px);
-  border: 1px solid var(--color-border, #cbd5e1);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md, 8px);
   font-size: var(--text-sm, 14px);
-  background: var(--color-bg, #ffffff);
-  color: var(--color-text-primary, #0f172a);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
   transition: all var(--transition-fast, 0.2s);
 }
 
 .searchInput:focus {
   outline: none;
-  border-color: var(--color-brand-primary, #0f7a4a);
+  border-color: var(--color-brand-primary);
   box-shadow: 0 0 0 3px rgba(15, 122, 74, 0.1);
 }
 
@@ -280,7 +279,7 @@
   left: var(--space-4, 16px);
   top: 50%;
   transform: translateY(-50%);
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-secondary);
   pointer-events: none;
 }
 
@@ -307,35 +306,35 @@
 
 .badge.active {
   background-color: rgba(59, 130, 246, 0.1);
-  color: #2563eb;
+  color: var(--color-info);
 }
 
 .badge.completed {
   background-color: rgba(16, 185, 129, 0.1);
-  color: #059669;
+  color: var(--color-success);
 }
 
 .badge.open {
   background-color: rgba(234, 179, 8, 0.1);
-  color: #ca8a04;
+  color: var(--color-warning);
 }
 
 .badge.cancelled {
   background-color: rgba(239, 68, 68, 0.1);
-  color: #dc2626;
+  color: var(--color-error);
 }
 
 .rateHigh {
-  color: #10b981;
+  color: var(--color-success);
   font-weight: var(--font-semibold);
 }
 
 .rateMed {
-  color: #f59e0b;
+  color: var(--color-warning);
   font-weight: var(--font-semibold);
 }
 
 .rateLow {
-  color: #ef4444;
+  color: var(--color-error);
   font-weight: var(--font-semibold);
 }

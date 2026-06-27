@@ -15,7 +15,8 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     contract_id: { type: "varchar(255)", notNull: true },
     tx_hash: { type: "varchar(255)", notNull: true },
     topic: { type: "varchar(50)", notNull: true },
-    payload: { type: "jsonb", notNull: true, default: "'{}'::jsonb" },
+    payload: { type: "jsonb", notNull: true, default: pgm.func("'{}'::jsonb") },
+
     ledger: { type: "integer", notNull: true },
     ledger_timestamp: { type: "timestamp" },
     processed: { type: "boolean", notNull: true, default: false },

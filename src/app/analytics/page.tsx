@@ -69,6 +69,8 @@ export default async function AnalyticsPage() {
             <div
               key={card.label}
               className={`card ${styles.statCard} ${card.highlight ? styles.highlight : ""}`}
+              role="img"
+              aria-label={`${card.label}: ${card.value}`}
             >
               <span className={styles.statIcon} aria-hidden="true">{card.icon}</span>
               <span className={styles.statValue}>{card.value}</span>
@@ -76,6 +78,27 @@ export default async function AnalyticsPage() {
             </div>
           ))}
         </div>
+
+        <section className={styles.tableSection} aria-labelledby="analytics-data-heading">
+          <h2 id="analytics-data-heading" className="sr-only">Platform analytics data</h2>
+          <table className={styles.analyticsTable}>
+            <caption className="sr-only">Platform analytics metrics and values</caption>
+            <thead>
+              <tr>
+                <th scope="col">Metric</th>
+                <th scope="col">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {statCards.map((card) => (
+                <tr key={card.label}>
+                  <th scope="row">{card.label}</th>
+                  <td>{card.value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
       </div>
     </div>
   );

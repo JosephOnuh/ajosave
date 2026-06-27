@@ -8,7 +8,7 @@
   white-space: nowrap; user-select: none;
 }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn--primary { background-color: var(--color-brand-primary); color: #fff; }
+.btn--primary { background-color: var(--color-brand-primary); color: var(--color-on-brand); }
 .btn--primary:hover:not(:disabled) { background-color: var(--color-brand-primary-hover); box-shadow: var(--shadow-glow); }
 .btn--accent { background-color: var(--color-brand-accent); color: var(--color-text-inverse); }
 .btn--accent:hover:not(:disabled) { background-color: var(--color-brand-accent-hover); }
