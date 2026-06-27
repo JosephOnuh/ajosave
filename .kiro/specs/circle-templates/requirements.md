@@ -80,3 +80,4 @@ New users of Ajosave struggle to configure savings circles from scratch. This fe
 1. THE Template_Selector SHALL source all template data from a static, frontend-only data structure (no API call required to load templates).
 2. THE Template_Selector SHALL render all templates without making a network request.
 3. WHEN a new template needs to be added or modified, THE system SHALL require only a change to the static template data file, with no database migration or API change.
+
