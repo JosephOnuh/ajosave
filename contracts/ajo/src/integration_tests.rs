@@ -830,3 +830,39 @@ let (cycle, max, _, completed, _) = client.get_state();
         );
     }
 }
+
+    // ─── migrate() admin-check tests (#495) ──────────────────────────────────
+
+    /// migrate: admin can call migrate without error (no-op when already at current version)
+    #[test]
+    fn test_migrate_admin_succeeds() {
+        let f = setup_fixture(2);
+        // Should not panic — admin is authorized
+        f.client.migrate();
+    }
+
+    /// migrate: non-admin caller is rejected
+    #[test]
+    #[should_panic]
+    fn test_migrate_non_admin_rejected() {
+        use soroban_sdk::{
+            testutils::{MockAuth, MockAuthInvoke},
+            IntoVal,
+        };
+
+        let f = setup_fixture(2);
+        let non_admin = Address::generate(&f.env);
+
+        // Authorize as non_admin — should be rejected by admin.require_auth()
+        f.env.mock_auths(&[MockAuth {
+            address: &non_admin,
+            invoke: &MockAuthInvoke {
+                contract: &f.client.address,
+                fn_name: "migrate",
+                args: ().into_val(&f.env),
+                sub_invokes: &[],
+            },
+        }]);
+
+        f.client.migrate(); // must panic: auth check fails
+    }

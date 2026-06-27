@@ -43,3 +43,18 @@ export function sanitizeValue(value: unknown, maxLength = MAX_STRING_LENGTH): un
 export function sanitizeBody(body: unknown): unknown {
   return sanitizeValue(body);
 }
+
+const SENSITIVE_KEYS = new Set(["api_key", "apiKey", "password", "secret", "token"]);
+const REDACTED = "[REDACTED]";
+
+/**
+ * Return a shallow-cloned object with sensitive keys replaced by "[REDACTED]".
+ * Safe to pass directly to logger calls.
+ */
+export function redactLogObject(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    result[k] = SENSITIVE_KEYS.has(k) ? REDACTED : v;
+  }
+  return result;
+}

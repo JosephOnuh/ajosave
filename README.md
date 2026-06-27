@@ -1,3 +1,4 @@
+<!-- #450: Fix focus trap in modal dialogs -->
 # Ajosave
 
 > **Trustless rotating savings circles (Ajo/Esusu) on the Stellar blockchain.**  
@@ -8,6 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Built on Stellar](https://img.shields.io/badge/Built%20on-Stellar-blue)](https://stellar.org)
 [![Soroban](https://img.shields.io/badge/Smart%20Contracts-Soroban-blueviolet)](https://developers.stellar.org/docs/build/smart-contracts)
+[![Status](https://img.shields.io/badge/status-page-brightgreen)](https://stats.uptimerobot.com/ajosave)
 
 ---
 
@@ -47,6 +49,8 @@ Today this runs entirely on trust — no contracts, no guarantees, frequent frau
                                           │  Trustless payout│
                                           └─────────────────┘
 ```
+
+Key architectural decisions are documented in [`docs/adr/`](docs/adr/README.md).
 
 ### Tech Stack
 
@@ -164,6 +168,18 @@ STELLAR_AJO_CONTRACT_ID=CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
 - **Low Fees** — Stellar's near-zero fees make micro-contributions viable
 - **Financial Inclusion** — NGN on-ramp via Paystack bridges local finance to global stablecoin liquidity
 - **On-Chain Reputation** — Contribution history builds a verifiable credit score on Stellar
+
+---
+
+## Status & Uptime
+
+🟢 **Public status page:** [https://stats.uptimerobot.com/ajosave](https://stats.uptimerobot.com/ajosave)
+
+- Monitors `https://ajosave.app/` and `https://ajosave.app/api/health` every **1 minute**
+- Downtime alerts sent via **email** and **Slack**
+- **30-day uptime history** visible on the status page
+
+See [`docs/uptime-monitoring.md`](docs/uptime-monitoring.md) for full setup instructions.
 
 ---
 

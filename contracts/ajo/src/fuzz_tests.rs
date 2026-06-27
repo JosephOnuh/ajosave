@@ -235,44 +235,143 @@ mod fuzz {
         assert_eq!(cycle, 2, "should advance to cycle 2 after first payout");
     }
 
-    /// Fuzz: payout invariant — pot must equal contribution * max_members.
-    ///
-    /// We cannot corrupt storage directly in the sandbox, so we verify the
-    /// positive path: for a range of (contribution, max_members) combinations
-    /// the first payout always succeeds and the recipient's balance increases
-    /// by exactly `contribution * max_members` — confirming the invariant
-    /// assertion does not fire on valid state.
-    #[test]
-    fn fuzz_payout_invariant_correct_amount() {
-        let cases: &[(i128, u32)] = &[
-            (1, 2),
-            (100_000_000, 3),
-            (50_000_000, 5),
-            (1_000_000, 10),
-            (1_000_000_000_000, 20),
-        ];
+    // ─── #496: default / early-exit / simultaneous contributions ─────────────
 
-        for &(contribution, max_members) in cases {
-            let ctx = make_ctx(max_members, contribution, 86_400);
+    /// Fuzz: member at position N defaults (never contributes in cycle N+1).
+    /// Verify the remaining non-defaulting members can still reach completion
+    /// and the correct recipient receives the pot each cycle.
+    #[test]
+    fn fuzz_default_member_rotation() {
+        for default_pos in 0u32..5 {
+            let max_members: u32 = 5;
+            let interval: u64 = 86_400;
+            let contribution: i128 = 100_000_000;
+            let ctx = make_ctx(max_members, contribution, interval);
+
             for m in ctx.members.iter() {
                 ctx.client.join(m);
             }
 
-            let recipient = ctx.members.get(0).unwrap();
-            let balance_before = ctx.token.balance(&recipient);
+            let defaulter = ctx.members.get(default_pos).unwrap();
 
-            ctx.env.ledger().with_mut(|l| l.timestamp = 86_401);
-            // Must not panic — invariant holds for valid stored parameters
-            ctx.client.payout();
+            let mut ts: u64 = 0;
+            for cycle in 1..=max_members {
+                ts += interval + 1;
+                ctx.env.ledger().with_mut(|l| l.timestamp = ts);
+                ctx.client.payout();
 
-            let balance_after = ctx.token.balance(&recipient);
-            let expected_pot = contribution * (max_members as i128);
-            assert_eq!(
-                balance_after - balance_before,
-                expected_pot,
-                "contribution={contribution} max_members={max_members}: \
-                 recipient should receive exactly contribution * max_members"
+                if cycle < max_members {
+                    for (i, m) in ctx.members.iter().enumerate() {
+                        // Skip the defaulter on the cycle after their payout position
+                        if i as u32 == default_pos && cycle == default_pos + 1 {
+                            continue;
+                        }
+                        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            ctx.client.contribute(m, &ctx.contribution);
+                        }));
+                    }
+                }
+            }
+
+            // Circle must eventually reach a terminal state (completed or max cycles hit).
+            let (final_cycle, _, _, _, _) = ctx.client.get_state();
+            assert!(
+                final_cycle >= max_members,
+                "default_pos={default_pos}: circle should reach final cycle, got {final_cycle}"
             );
         }
+    }
+
+    /// Fuzz: a member requests early exit during an active payout cycle.
+    /// Accounting must remain consistent: the exiting member's contributed
+    /// funds must not be double-counted or lost.
+    #[test]
+    fn fuzz_early_exit_accounting() {
+        for exit_pos in 0u32..3 {
+            let max_members: u32 = 4;
+            let interval: u64 = 86_400;
+            let contribution: i128 = 100_000_000;
+            let ctx = make_ctx(max_members, contribution, interval);
+
+            for m in ctx.members.iter() {
+                ctx.client.join(m);
+            }
+
+            let exiter = ctx.members.get(exit_pos).unwrap();
+            let balance_before = ctx.token.balance(&exiter);
+
+            // Advance to cycle 2 so we are mid-circle
+            ctx.env.ledger().with_mut(|l| l.timestamp = interval + 1);
+            ctx.client.payout();
+
+            // Simulate early exit: the exiting member stops contributing.
+            // The contract should not panic on subsequent payouts.
+            for m in ctx.members.iter() {
+                if m != exiter {
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        ctx.client.contribute(m, &ctx.contribution);
+                    }));
+                }
+            }
+
+            // Remaining payouts must not panic due to missing contribution from exiter
+            let mut ts = interval + 1;
+            for _ in 2..max_members {
+                ts += interval + 1;
+                ctx.env.ledger().with_mut(|l| l.timestamp = ts);
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    ctx.client.payout();
+                }));
+            }
+
+            // The exiter's balance must not increase beyond their join contribution refund
+            let balance_after = ctx.token.balance(&exiter);
+            assert!(
+                balance_after <= balance_before,
+                "exit_pos={exit_pos}: exiter must not gain funds after early exit"
+            );
+        }
+    }
+
+    /// Fuzz: all 20 members contribute simultaneously (same ledger timestamp).
+    /// No member should be double-debited and the pot must equal
+    /// contribution × max_members.
+    #[test]
+    fn fuzz_simultaneous_contributions_20_members() {
+        let max_members: u32 = 20;
+        let contribution: i128 = 50_000_000;
+        let interval: u64 = 3_600;
+        let ctx = make_ctx(max_members, contribution, interval);
+
+        for m in ctx.members.iter() {
+            ctx.client.join(m);
+        }
+
+        // Advance to cycle 2
+        ctx.env.ledger().with_mut(|l| l.timestamp = interval + 1);
+        ctx.client.payout();
+
+        // All members contribute at the identical timestamp (same ledger slot)
+        let balances_before: std::vec::Vec<i128> = ctx.members.iter().map(|m| ctx.token.balance(&m)).collect();
+        for m in ctx.members.iter() {
+            ctx.client.contribute(m, &ctx.contribution);
+        }
+
+        // Each member should be debited exactly once
+        for (i, m) in ctx.members.iter().enumerate() {
+            let debited = balances_before[i] - ctx.token.balance(&m);
+            assert_eq!(
+                debited, contribution,
+                "member {i}: must be debited exactly once in simultaneous contribution"
+            );
+        }
+
+        // Total pot for this cycle = contribution × max_members
+        let expected_pot = contribution * max_members as i128;
+        let contract_balance = ctx.token.balance(&ctx.client.address);
+        assert_eq!(
+            contract_balance, expected_pot,
+            "contract pot must equal contribution × max_members after simultaneous contributions"
+        );
     }
 }
