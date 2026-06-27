@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomBytes } from "crypto";
 
 export function middleware(request: NextRequest) {
   const origin = request.headers.get("origin");
+  const nonce = randomBytes(16).toString("base64");
+  const csp = buildCsp(nonce);
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
 
   const configuredOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(",")
@@ -18,22 +24,22 @@ export function middleware(request: NextRequest) {
     .filter(Boolean)
     .map((o) => o!.trim().replace(/\/$/, ""));
 
-  // Handle API versioning redirects
-  if (request.nextUrl.pathname.startsWith("/api/") && !request.nextUrl.pathname.startsWith("/api/v1/")) {
-    // Skip auth routes as they need special handling
-    if (!request.nextUrl.pathname.startsWith("/api/auth/")) {
-      const newUrl = request.nextUrl.clone();
-      newUrl.pathname = newUrl.pathname.replace('/api/', '/api/v1/');
-      
-      const response = NextResponse.redirect(newUrl, {
-        status: request.method === 'GET' ? 301 : 308,
-      });
-      
-      response.headers.set('X-API-Deprecated', 'true');
-      response.headers.set('X-API-Deprecation-Info', `This endpoint is deprecated. Use ${newUrl.pathname} instead.`);
-      
-      return response;
-    }
+  // API versioning: transparently rewrite /api/:path* → /api/v1/:path*
+  // Excludes auth routes (handled by NextAuth).
+  if (
+    request.nextUrl.pathname.startsWith("/api/") &&
+    !request.nextUrl.pathname.startsWith("/api/v1/") &&
+    !request.nextUrl.pathname.startsWith("/api/auth/")
+  ) {
+    const newUrl = request.nextUrl.clone();
+    newUrl.pathname = newUrl.pathname.replace("/api/", "/api/v1/");
+    const response = NextResponse.rewrite(newUrl);
+    response.headers.set("X-API-Deprecated", "true");
+    response.headers.set(
+      "X-API-Deprecation-Info",
+      `This path is deprecated. Use ${newUrl.pathname} instead.`
+    );
+    return response;
   }
 
   // Handle CORS for API routes
@@ -62,6 +68,12 @@ export function middleware(request: NextRequest) {
         );
         response.headers.set("Access-Control-Allow-Credentials", "true");
         response.headers.set("Access-Control-Max-Age", "86400");
+        // Add security headers to preflight response
+        response.headers.set("X-Content-Type-Options", "nosniff");
+        response.headers.set("X-Frame-Options", "DENY");
+        response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+        response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+        response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
         return response;
       }
 
@@ -77,13 +89,31 @@ export function middleware(request: NextRequest) {
         "Content-Type, Authorization, X-Requested-With, X-CSRF-Token"
       );
       response.headers.set("Access-Control-Allow-Credentials", "true");
+      // Add security headers to API responses
+      response.headers.set("X-Content-Type-Options", "nosniff");
+      response.headers.set("X-Frame-Options", "DENY");
+      response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+      response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+      response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
       return response;
     }
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy-Report-Only", csp);
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+
+  return response;
 }
 
 export const config = {
-  matcher: "/api/:path*",
+  matcher: [
+    "/api/:path*",
+    // Apply CSP to all page routes (exclude static files and _next internals)
+    "/((?!_next/static|_next/image|favicon.ico).*)",
+  ],
 };
