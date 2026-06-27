@@ -8,6 +8,7 @@ import { getRedis } from "@/lib/redis";
 jest.mock("@/lib/lockout");
 jest.mock("@/lib/db");
 jest.mock("@/lib/redis");
+jest.mock("@/lib/encryption", () => ({ hmacIndex: jest.fn((v: string) => `hmac:${v}`) }));
 jest.mock("@/server/middleware", () => ({
   withErrorHandler: (handler: Function) => handler,
 }));
@@ -181,8 +182,11 @@ describe("POST /api/auth/verify-otp", () => {
     // Verify lockout was reset
     expect(lockout.resetLockout).toHaveBeenCalledWith("+234123456789");
 
-    // Verify OTP was deleted
-    expect(mockRedis.del).toHaveBeenCalledWith("otp:+234123456789");
+    // Verify OTP was deleted using hmac key, not plaintext phone
+    expect(mockRedis.del).toHaveBeenCalledTimes(1);
+    const [delKey] = (mockRedis.del as jest.Mock).mock.calls[0];
+    expect(delKey).toMatch(/^otp:/);
+    expect(delKey).not.toContain("+234123456789");
   });
 
   it("should create user on first successful OTP verification", async () => {

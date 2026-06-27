@@ -22,8 +22,12 @@ export function CircleCard({ circle, members, showJoin = false }: CircleCardProp
         <h3 className={styles.name}>{circle.name}</h3>
         <CircleStatusBadge status={circle.status} />
       </div>
-      {circle.category && (
-        <span className={styles.category}>{circle.category}</span>
+      {(circle as Circle & { category?: string }).category && (
+        <span className={styles.category}>{(circle as Circle & { category?: string }).category}</span>
+      )}
+
+      {circle.description && (
+        <p className={styles.description}>{circle.description}</p>
       )}
 
       <div className={styles.amount}>

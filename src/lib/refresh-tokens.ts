@@ -1,6 +1,5 @@
 import { randomBytes, createHash } from "crypto";
 import { query } from "./db";
-import { getRedis } from "./redis";
 
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
 const ACCESS_TOKEN_TTL = 15 * 60; // 15 minutes in seconds

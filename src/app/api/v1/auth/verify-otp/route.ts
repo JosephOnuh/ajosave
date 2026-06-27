@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { withErrorHandler } from "@/server/middleware";
+import { withErrorHandler, withRateLimit } from "@/server/middleware";
 import { verifyOtpSchema } from "@/types/schemas";
 import { getRedis } from "@/lib/redis";
 import { getLockoutStatus, recordFailure, resetLockout } from "@/lib/lockout";
+import { hmacIndex } from "@/lib/encryption";
 import { query } from "@/lib/db";
 import type { ApiResponse } from "@/types";
 
@@ -75,7 +76,8 @@ interface VerifyOtpResponse {
  *   }
  * }
  */
-export const POST = withErrorHandler(async (req: NextRequest) => {
+export const POST = withRateLimit(
+  withErrorHandler(async (req: NextRequest) => {
   try {
     const body = await req.json();
     const parsed = verifyOtpSchema.safeParse(body);
@@ -110,7 +112,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
     // Verify OTP from Redis
     const redis = await getRedis();
-    const storedOtp = await redis.get(`otp:${phone}`);
+    const storedOtp = await redis.get(`otp:${hmacIndex(phone)}`);
 
     if (!storedOtp || storedOtp !== otp) {
       // Record failure and get updated status
@@ -137,7 +139,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
     // OTP is valid - reset failure tracking and delete OTP
     await resetLockout(phone);
-    await redis.del(`otp:${phone}`);
+    await redis.del(`otp:${hmacIndex(phone)}`);
 
     // Load or create user
     let user = await query<{ id: string; phone: string; display_name: string; role: string }>(
@@ -184,4 +186,6 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
       { status: 500 }
     );
   }
-});
+  }),
+  { limit: 5, windowMs: 60_000 }
+);

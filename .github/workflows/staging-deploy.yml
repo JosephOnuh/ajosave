@@ -134,3 +134,4 @@ jobs:
           name: contract-deploy-artifacts
           path: deploy-artifacts/
           retention-days: 30
+
