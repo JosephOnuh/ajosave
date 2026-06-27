@@ -26,10 +26,7 @@ export const GET = withErrorHandler(async (_req: NextRequest) => {
     const redisStart = Date.now();
     const redis = await getRedis();
     // ping returns "PONG" on success
-    // some redis clients use ping(), some use command; this should work with node-redis
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    const pong = await redis.ping();
+    const pong = await (redis as any).ping();
     const redisMs = Date.now() - redisStart;
     health.redis = pong === "PONG" ? (redisMs < 500 ? "ok" : "degraded") : "error";
     health.redisMs = redisMs;
@@ -44,17 +41,4 @@ export const GET = withErrorHandler(async (_req: NextRequest) => {
 
   return NextResponse.json(health);
 });
-import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const newUrl = url.pathname.replace('/api/health', '/api/v1/health');
-  
-  return NextResponse.redirect(new URL(newUrl + url.search, url.origin), {
-    status: 301,
-    headers: {
-      'X-API-Deprecated': 'true',
-      'X-API-Deprecation-Info': 'This endpoint is deprecated. Use /api/v1/health instead.',
-    }
-  });
-}

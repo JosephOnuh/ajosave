@@ -117,7 +117,7 @@ describe("POST /api/auth/refresh", () => {
 
   it("should set secure cookie in production", async () => {
     const originalEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    Object.defineProperty(process.env, "NODE_ENV", { value: "production", configurable: true });
 
     const req = new NextRequest("http://localhost:3000/api/auth/refresh", {
       method: "POST",
@@ -152,6 +152,6 @@ describe("POST /api/auth/refresh", () => {
     const setCookieHeader = response.headers.get("set-cookie");
     expect(setCookieHeader).toContain("Secure");
 
-    process.env.NODE_ENV = originalEnv;
+    Object.defineProperty(process.env, "NODE_ENV", { value: originalEnv, configurable: true });
   });
 });

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendOtp } from "@/lib/sms";
-import { rateLimit, withErrorHandler } from "@/server/middleware";
+import { rateLimit, withErrorHandler, withRateLimit } from "@/server/middleware";
 import { sendOtpSchema } from "@/types/schemas";
 import type { ApiResponse } from "@/types";
 import { getRedis } from "@/lib/redis";
 import { getLockoutStatus } from "@/lib/lockout";
+import { hmacIndex } from "@/lib/encryption";
 
 interface SendOtpResponse {
   message: string;
@@ -55,7 +56,8 @@ interface SendOtpResponse {
  *   }
  * }
  */
-export const POST = withErrorHandler(async (req: NextRequest) => {
+export const POST = withRateLimit(
+  withErrorHandler(async (req: NextRequest) => {
   const body = await req.json();
   const parsed = sendOtpSchema.safeParse(body);
   if (!parsed.success) {
@@ -93,9 +95,9 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
 
   const otp = await sendOtp(phone);
   
-  // Store OTP in Redis with 10-minute expiry
+  // Store OTP in Redis with 5-minute expiry (max allowed per #488)
   const redis = await getRedis();
-  await redis.set(`otp:${phone}`, otp, { EX: 600 });
+  await redis.set(`otp:${phone}`, otp, { EX: 300 });
 
   if (process.env.NODE_ENV === "development") console.warn(`[DEV] OTP for ${phone}: ${otp}`);
   
@@ -103,4 +105,6 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
     success: true,
     data: { message: "OTP sent successfully" },
   });
-});
+  }),
+  { limit: 5, windowMs: 60_000 }
+);
