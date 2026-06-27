@@ -26,6 +26,8 @@ jobs:
       - run: npm run lint
       - run: npm run type-check
       - run: npm run format:check
+      - name: SQL injection audit
+        run: npx ts-node --project tsconfig.scripts.json scripts/audit-sql.ts
 
   secret-scan:
     name: Secret Scanning (Gitleaks)

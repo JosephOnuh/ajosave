@@ -44,7 +44,11 @@ function getPool(): Pool {
       connectionTimeoutMillis: 5_000,
       // Validate connections before use to detect stale connections
       allowExitOnIdle: false,
-      ssl: serverConfig.stellar.network === "mainnet" ? { rejectUnauthorized: true } : false,
+      ssl: (() => {
+        const sslMode = process.env.DATABASE_SSL_MODE ?? (serverConfig.stellar.network === "mainnet" ? "require" : serverConfig.stellar.network === "local" ? "disable" : "no-verify");
+        if (sslMode === "disable") return false;
+        return { rejectUnauthorized: sslMode === "require" };
+      })(),
     });
 
     // Pool event listeners for monitoring and debugging
