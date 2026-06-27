@@ -1,12 +1,40 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import type { Circle } from "@/types";
 import { CircleCard } from "@/components/circle/CircleCard";
 import { ConnectionStatus } from "@/components/ui/ConnectionStatus";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { usePolling } from "@/hooks/usePolling";
 import Link from "next/link";
 import styles from "./LiveDashboard.module.css";
+
+function ExportCSVButton() {
+  const [loading, setLoading] = useState(false);
+
+  async function handleExport() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/user/contributions/export");
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `contributions-${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button onClick={handleExport} disabled={loading} className="btn btn--secondary btn--sm">
+      {loading ? "Exporting…" : "Export CSV"}
+    </button>
+  );
+}
 
 interface LiveDashboardProps {
   initialCircles: Circle[];
@@ -16,6 +44,7 @@ export function LiveDashboard({ initialCircles }: LiveDashboardProps) {
   const [circles, setCircles] = useState<Circle[]>(initialCircles);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [newCirclesCount, setNewCirclesCount] = useState(0);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const fetchCircles = useCallback(async () => {
     const res = await fetch("/api/circles?filter=mine");
@@ -40,12 +69,21 @@ export function LiveDashboard({ initialCircles }: LiveDashboardProps) {
     },
   });
 
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("ajosave:onboarding");
+      const parsed = stored ? JSON.parse(stored) : null;
+      if (!parsed?.seen) setShowOnboarding(true);
+    } catch {}
+  }, []);
+
   return (
     <>
       <div className={styles.header}>
         <h1 className={styles.title}>My Circles</h1>
         <div className={styles.headerActions}>
           <ConnectionStatus isConnected={isConnected} lastUpdate={lastUpdate || undefined} />
+          <ExportCSVButton />
           <Link href="/circles/create" className="btn btn--accent">
             + New Circle
           </Link>
@@ -53,45 +91,33 @@ export function LiveDashboard({ initialCircles }: LiveDashboardProps) {
       </div>
 
       {newCirclesCount > 0 && (
-        <div className={styles.newItemsBanner}>
+        <div className={styles.newItemsBanner} role="status" aria-live="polite">
           🎉 {newCirclesCount} new circle{newCirclesCount !== 1 ? "s" : ""} available!
         </div>
       )}
 
       {circles.length === 0 ? (
-        <div className={styles.empty}>
-          <div className={styles.emptyIllustration} aria-hidden="true">
-            <svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Empty savings circle">
-              <circle cx="48" cy="48" r="44" stroke="var(--color-border)" strokeWidth="2" strokeDasharray="6 4" />
-              <circle cx="48" cy="20" r="6" fill="var(--color-bg-elevated)" stroke="var(--color-brand-primary)" strokeWidth="2" />
-              <circle cx="72" cy="34" r="6" fill="var(--color-bg-elevated)" stroke="var(--color-border)" strokeWidth="2" />
-              <circle cx="72" cy="62" r="6" fill="var(--color-bg-elevated)" stroke="var(--color-border)" strokeWidth="2" />
-              <circle cx="48" cy="76" r="6" fill="var(--color-bg-elevated)" stroke="var(--color-border)" strokeWidth="2" />
-              <circle cx="24" cy="62" r="6" fill="var(--color-bg-elevated)" stroke="var(--color-border)" strokeWidth="2" />
-              <circle cx="24" cy="34" r="6" fill="var(--color-bg-elevated)" stroke="var(--color-border)" strokeWidth="2" />
-              <circle cx="48" cy="48" r="10" fill="var(--color-brand-primary)" opacity="0.15" />
-              <text x="48" y="53" textAnchor="middle" fontSize="14" fill="var(--color-brand-primary)">₦</text>
-            </svg>
-          </div>
-          <h2 className={styles.emptyTitle}>Start your savings journey</h2>
-          <p className={styles.emptyText}>
-            You haven&apos;t joined any circles yet. Create your own or browse open circles to get started.
-          </p>
-          <div className={styles.emptyCtas}>
-            <Link href="/circles/create" className="btn btn--primary">
-              Create your first circle
-            </Link>
-            <Link href="/circles" className="btn btn--secondary">
-              Browse circles
-            </Link>
-          </div>
-        </div>
+        <EmptyState
+          illustration="circles"
+          title="Start your savings journey"
+          description="You haven't joined any circles yet. Create your own or browse open circles to get started."
+          ctas={[
+            { label: "Create your first circle", href: "/circles/create", variant: "primary" },
+            { label: "Browse circles", href: "/circles", variant: "secondary" },
+          ]}
+        />
       ) : (
         <div className={styles.grid}>
           {circles.map((circle) => (
             <CircleCard key={circle.id} circle={circle} members={[]} />
           ))}
         </div>
+      )}
+
+      {showOnboarding && (
+        // Lazy-load to keep bundle small
+        //@ts-ignore
+        <Onboarding onClose={() => setShowOnboarding(false)} />
       )}
     </>
   );

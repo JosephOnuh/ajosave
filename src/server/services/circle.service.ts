@@ -1,11 +1,54 @@
+// .
 import { query, transaction } from "@/lib/db";
 import { randomUUID } from "crypto";
-import type { Circle, Member, CircleStatus } from "@/types";
+import type { Circle, Member, CircleStatus, CycleFrequency } from "@/types";
 import type { CreateCircleInput } from "@/types/schemas";
 import { getFiatPerUsdc } from "@/lib/fx";
 import { deployAjoContract } from "@/lib/soroban";
-import { sendUsdcPayment } from "@/lib/stellar";
-import { notifyCircleCancelled } from "./notification.service";
+import { sendUsdcPayment, validateStellarRecipient } from "@/lib/stellar";
+import { notifyCircleCancelled, notifyCirclePaused, notifyCircleResumed } from "./notification.service";
+import { getRedis } from "@/lib/redis";
+import logger from "@/lib/logger";
+
+const CACHE_KEY = "circles:open";
+const CACHE_TTL = 30; // seconds
+
+async function getCached<T>(key: string): Promise<T | null> {
+  try {
+    const redis = await getRedis();
+    const raw = await redis.get(key);
+    if (raw) {
+      logger.info({ key }, "cache hit");
+      return JSON.parse(raw) as T;
+    }
+    logger.info({ key }, "cache miss");
+  } catch (err) {
+    logger.warn({ err, key }, "Redis get failed, falling through to DB");
+  }
+  return null;
+}
+
+async function setCached(key: string, value: unknown): Promise<void> {
+  try {
+    const redis = await getRedis();
+    await redis.set(key, JSON.stringify(value), { EX: CACHE_TTL });
+  } catch (err) {
+    logger.warn({ err, key }, "Redis set failed");
+  }
+}
+
+async function invalidateCache(pattern: string): Promise<void> {
+  try {
+    const redis = await getRedis();
+    const keys = await redis.keys(pattern);
+    if (keys.length > 0) {
+      await redis.del(keys);
+    }
+    logger.info({ pattern }, "cache invalidated");
+  } catch (err) {
+    logger.warn({ err, pattern }, "Redis del failed");
+  }
+}
 
 export const fiatToUsdc = async (amount: number, currency: string): Promise<string> => {
   const rate = await getFiatPerUsdc(currency);
@@ -23,19 +66,24 @@ const CIRCLE_SELECT = `
   payout_method as "payoutMethod", 
   randomization_seed as "randomizationSeed",
   grace_period_hours as "gracePeriodHours",
+  yield_strategy as "yieldStrategy",
+  penalty_percent as "penaltyPercent",
   status, contract_id as "contractId", 
   current_cycle as "currentCycle", 
   (SELECT COUNT(*)::int FROM members WHERE circle_id = circles.id AND status = 'active') as "memberCount",
   next_payout_at as "nextPayoutAt", 
+  paused_at as "pausedAt",
   created_at as "createdAt", 
   updated_at as "updatedAt",
   deleted_at as "deletedAt"
 `;
 
 const MEMBER_SELECT = `
-  id, circle_id as "circleId", user_id as "userId", 
-  position, status, has_received_payout as "hasReceivedPayout", 
-  joined_at as "joinedAt", reviewed_at as "reviewedAt"
+  m.id, m.circle_id as "circleId", m.user_id as "userId",
+  u.display_name as "displayName",
+  u.stellar_public_key as "stellarPublicKey",
+  m.position, m.status, m.has_received_payout as "hasReceivedPayout",
+  m.joined_at as "joinedAt", m.reviewed_at as "reviewedAt"
 `;
 
 export async function createCircle(
@@ -56,12 +104,13 @@ export async function createCircle(
   const { rows } = await query<Circle>(
     `INSERT INTO circles
        (id, name, creator_id, contribution_usdc, contribution_fiat, contribution_currency,
-        max_members, cycle_frequency, payout_method, contract_id, grace_period_hours, status, current_cycle, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'open',0,NOW(),NOW())
+        max_members, cycle_frequency, payout_method, randomization_seed, yield_strategy, penalty_percent, contract_id, grace_period_hours, status, current_cycle, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'open',0,NOW(),NOW())
      RETURNING ${CIRCLE_SELECT}`,
     [id, input.name, creatorId, contributionUsdc, input.contributionAmount, input.contributionCurrency,
-     input.maxMembers, input.cycleFrequency, input.payoutMethod, contractId, input.gracePeriodHours ?? 24]
+     input.maxMembers, input.cycleFrequency, input.payoutMethod, null, input.yieldStrategy, input.penaltyPercent, contractId, input.gracePeriodHours ?? 24]
   );
+  await invalidateCache(`${CACHE_KEY}:*`);
   return rows[0];
 }
 
@@ -86,6 +135,7 @@ export interface CircleFilters {
   maxAmount?: number;
   currency?: string;
   search?: string;
+  status?: CircleStatus;
 }
 
 export async function listOpenCircles(
@@ -95,12 +145,18 @@ export async function listOpenCircles(
 ): Promise<PaginatedCircles> {
   const safePage = Math.max(1, page);
   const safeLimit = Math.min(100, Math.max(1, limit));
+
+  const cacheKey = `${CACHE_KEY}:${JSON.stringify({ page: safePage, limit: safeLimit, ...filters })}`;
+  const cached = await getCached<PaginatedCircles>(cacheKey);
+  if (cached) return cached;
   const offset = (safePage - 1) * safeLimit;
 
-  let queryText = `SELECT ${CIRCLE_SELECT} FROM circles WHERE status = 'open' AND deleted_at IS NULL`;
-  let countQueryText = "SELECT COUNT(*) FROM circles WHERE status = 'open' AND deleted_at IS NULL";
-  const queryParams: any[] = [];
-  let paramIndex = 1;
+  const statusFilter: CircleStatus = filters.status ?? 'open';
+  const queryParams: any[] = [statusFilter];
+  let paramIndex = 2;
+
+  let queryText = `SELECT ${CIRCLE_SELECT} FROM circles WHERE status = $1 AND deleted_at IS NULL`;
+  let countQueryText = "SELECT COUNT(*) FROM circles WHERE status = $1 AND deleted_at IS NULL";
 
   if (filters.frequency) {
     queryText += ` AND cycle_frequency = $${paramIndex}`;
@@ -145,7 +201,9 @@ export async function listOpenCircles(
     query<{ count: string }>(countQueryText, queryParams),
   ]);
 
-  return { data: rows, total: parseInt(countRows[0].count, 10), page: safePage, limit: safeLimit };
+  const result = { data: rows, total: parseInt(countRows[0].count, 10), page: safePage, limit: safeLimit };
+  await setCached(cacheKey, result);
+  return result;
 }
 
 export async function getCirclesByUser(userId: string): Promise<Circle[]> {
@@ -159,6 +217,9 @@ export async function getCirclesByUser(userId: string): Promise<Circle[]> {
         c.cycle_frequency as "cycleFrequency", 
         c.payout_method as "payoutMethod", 
         c.randomization_seed as "randomizationSeed",
+        c.grace_period_hours as "gracePeriodHours",
+        c.yield_strategy as "yieldStrategy",
+        c.penalty_percent as "penaltyPercent",
         c.status, c.contract_id as "contractId", 
         c.current_cycle as "currentCycle", 
         c.next_payout_at as "nextPayoutAt", 
@@ -178,7 +239,7 @@ export async function joinCircle(
   userId: string,
   isInvited: boolean = false
 ): Promise<Member> {
-  return transaction(async (q) => {
+  const member = await transaction(async (q) => {
     const { rows: circleRows } = await q<Circle>(
       `SELECT ${CIRCLE_SELECT} FROM circles WHERE id = $1 FOR UPDATE`,
       [circleId]
@@ -188,7 +249,7 @@ export async function joinCircle(
     if (circle.status !== "open") throw new Error("Circle is not open for joining");
 
     const { rows: memberRows } = await q<Member>(
-      `SELECT ${MEMBER_SELECT} FROM members WHERE circle_id = $1 AND status IN ('active', 'pending')`,
+      `SELECT ${MEMBER_SELECT} FROM members m JOIN users u ON u.id = m.user_id WHERE m.circle_id = $1 AND m.status IN ('active', 'pending')`,
       [circleId]
     );
     if (memberRows.length >= circle.maxMembers) throw new Error("Circle is full");
@@ -202,8 +263,11 @@ export async function joinCircle(
     const reviewedAt = (status === "active" && isPrivate) ? new Date() : null;
 
     const { rows: newMember } = await q<Member>(
-      `INSERT INTO members (id, circle_id, user_id, position, status, has_received_payout, joined_at, reviewed_at)
-       VALUES ($1,$2,$3,$4,$5,false,NOW(), $6) RETURNING ${MEMBER_SELECT}`,
+      `WITH ins AS (
+         INSERT INTO members (id, circle_id, user_id, position, status, has_received_payout, joined_at, reviewed_at)
+         VALUES ($1,$2,$3,$4,$5,false,NOW(), $6) RETURNING *
+       )
+       SELECT ${MEMBER_SELECT} FROM ins m JOIN users u ON u.id = m.user_id`,
       [randomUUID(), circleId, userId, position, status, reviewedAt]
     );
 
@@ -217,15 +281,35 @@ export async function joinCircle(
          WHERE id=$2`,
         [computeNextPayoutDate(circle.cycleFrequency), circleId]
       );
+
+      // Auto-randomize order when circle is full if randomize_order was selected
+      if (circle.payoutMethod === "randomized" && !circle.randomizationSeed) {
+        const { randomBytes } = await import("crypto");
+        const seed = `${Date.now()}-${randomBytes(16).toString("hex")}`;
+        // Fetch all active member ids for shuffling
+        const allActive = [...memberRows.filter(m => m.status === 'active'), newMember[0]];
+        const positions = allActive.map((_, i) => i + 1);
+        const seededRandom = createSeededRandom(seed);
+        for (let i = positions.length - 1; i > 0; i--) {
+          const j = Math.floor(seededRandom() * (i + 1));
+          [positions[i], positions[j]] = [positions[j], positions[i]];
+        }
+        for (let i = 0; i < allActive.length; i++) {
+          await q("UPDATE members SET position = $1, updated_at = NOW() WHERE id = $2", [positions[i], allActive[i].id]);
+        }
+        await q("UPDATE circles SET randomization_seed = $1, updated_at = NOW() WHERE id = $2", [seed, circleId]);
+      }
     }
 
     return newMember[0];
   });
+  await invalidateCache(`${CACHE_KEY}:*`);
+  return member;
 }
 
 export async function getMembersByCircle(circleId: string): Promise<Member[]> {
   const { rows } = await query<Member>(
-    `SELECT ${MEMBER_SELECT} FROM members WHERE circle_id = $1 ORDER BY position`,
+    `SELECT ${MEMBER_SELECT} FROM members m JOIN users u ON u.id = m.user_id WHERE m.circle_id = $1 ORDER BY m.position`,
     [circleId]
   );
   return rows;
@@ -236,6 +320,7 @@ export async function updateCircleStatus(id: string, status: CircleStatus): Prom
     "UPDATE circles SET status=$1, updated_at=NOW() WHERE id=$2",
     [status, id]
   );
+  await invalidateCache(`${CACHE_KEY}:*`);
 }
 
 export async function shuffleAndPersistPositions(
@@ -252,7 +337,7 @@ export async function shuffleAndPersistPositions(
     if (circle.status !== "open") throw new Error("Positions can only be shuffled before the circle starts");
 
     const { rows: memberRows } = await q<Member>(
-      `SELECT ${MEMBER_SELECT} FROM members WHERE circle_id = $1 ORDER BY position`,
+      `SELECT ${MEMBER_SELECT} FROM members m JOIN users u ON u.id = m.user_id WHERE m.circle_id = $1 ORDER BY m.position`,
       [circleId]
     );
 
@@ -457,8 +542,8 @@ export async function cancelCircle(
        WHERE id = $1
        RETURNING id, name, creator_id as "creatorId",
                  contribution_usdc as "contributionUsdc",
-                 contribution_ngn as "contributionFiat",
-                 'NGN' as "contributionCurrency",
+                 contribution_fiat as "contributionFiat",
+                 contribution_currency as "contributionCurrency",
                  max_members as "maxMembers",
                  cycle_frequency as "cycleFrequency",
                  payout_method as "payoutMethod",
@@ -472,6 +557,8 @@ export async function cancelCircle(
     );
     return updated[0];
   });
+
+  await invalidateCache(`${CACHE_KEY}:*`);
 
   // ── Step 2: Fetch members with refund_pending contributions ────────────────
   const { rows: refundRows } = await query<{
@@ -509,6 +596,7 @@ export async function cancelCircle(
     }
 
     try {
+      await validateStellarRecipient(stellar_public_key);
       const txHash = await sendUsdcPayment(stellar_public_key, total_usdc);
 
       // Mark contributions as refunded and record the tx hash
@@ -565,6 +653,86 @@ export async function cancelCircle(
   return circle;
 }
 
+export async function pauseCircle(
+  circleId: string,
+  creatorId: string
+): Promise<Circle> {
+  const result = await transaction(async (q) => {
+    const { rows } = await q<Circle>(
+      `SELECT ${CIRCLE_SELECT} FROM circles WHERE id = $1 FOR UPDATE`,
+      [circleId]
+    );
+    const circle = rows[0];
+    if (!circle) throw new Error("Circle not found");
+    if (circle.creatorId !== creatorId) throw new Error("Only creator can pause the circle");
+    if (circle.status !== "active") throw new Error("Only active circles can be paused");
+
+    const { rows: updated } = await q<Circle>(
+      `UPDATE circles 
+       SET status = 'paused', paused_at = NOW(), updated_at = NOW() 
+       WHERE id = $1 
+       RETURNING ${CIRCLE_SELECT}`,
+      [circleId]
+    );
+
+    // Notify all members
+    const { rows: members } = await q<{ userId: string }>(
+      "SELECT user_id as \"userId\" FROM members WHERE circle_id = $1 AND status = 'active'",
+      [circleId]
+    );
+    await notifyCirclePaused(members.map(m => m.userId), circle.name);
+
+    return updated[0];
+  });
+  await invalidateCache(`${CACHE_KEY}:*`);
+  return result;
+}
+
+export async function resumeCircle(
+  circleId: string,
+  creatorId: string
+): Promise<Circle> {
+  const result = await transaction(async (q) => {
+    const { rows } = await q<Circle>(
+      `SELECT ${CIRCLE_SELECT} FROM circles WHERE id = $1 FOR UPDATE`,
+      [circleId]
+    );
+    const circle = rows[0];
+    if (!circle) throw new Error("Circle not found");
+    if (circle.creatorId !== creatorId) throw new Error("Only creator can resume the circle");
+    if (circle.status !== "paused") throw new Error("Circle is not paused");
+
+    // Calculate pause duration and extend nextPayoutAt
+    const pausedAt = circle.pausedAt ? new Date(circle.pausedAt) : new Date();
+    const now = new Date();
+    const durationMs = now.getTime() - pausedAt.getTime();
+    
+    let nextPayoutAt = circle.nextPayoutAt ? new Date(circle.nextPayoutAt) : null;
+    if (nextPayoutAt) {
+      nextPayoutAt = new Date(nextPayoutAt.getTime() + durationMs);
+    }
+
+    const { rows: updated } = await q<Circle>(
+      `UPDATE circles 
+       SET status = 'active', next_payout_at = $2, paused_at = NULL, updated_at = NOW() 
+       WHERE id = $1 
+       RETURNING ${CIRCLE_SELECT}`,
+      [circleId, nextPayoutAt]
+    );
+
+    // Notify all members
+    const { rows: members } = await q<{ userId: string }>(
+      "SELECT user_id as \"userId\" FROM members WHERE circle_id = $1 AND status = 'active'",
+      [circleId]
+    );
+    await notifyCircleResumed(members.map(m => m.userId), circle.name);
+
+    return updated[0];
+  });
+  await invalidateCache(`${CACHE_KEY}:*`);
+  return result;
+}
+
 /**
  * Leave an open circle.
  * Only members who are not the creator can leave.
@@ -573,7 +741,8 @@ export async function leaveCircle(
   circleId: string,
   userId: string
 ): Promise<void> {
-  return transaction(async (q) => {
+  let circleName = "";
+  await transaction(async (q) => {
     const { rows: circleRows } = await q<Circle>(
       "SELECT * FROM circles WHERE id = $1 FOR UPDATE",
       [circleId]
@@ -582,6 +751,8 @@ export async function leaveCircle(
     if (!circle) throw new Error("Circle not found");
     if (circle.status !== "open") throw new Error("Can only leave open circles");
     if (circle.creatorId === userId) throw new Error("Creator cannot leave the circle; cancel it instead");
+
+    circleName = circle.name;
 
     // Remove the member
     const { rowCount } = await q(
@@ -603,6 +774,20 @@ export async function leaveCircle(
       );
     }
   });
+
+  // Trigger waitlist notification if a spot opens up (asynchronously, non-blocking)
+  try {
+    const { getFirstWaitlistMember } = await import("./waitlist.service");
+    const nextUser = await getFirstWaitlistMember(circleId);
+    if (nextUser) {
+      const { notifyWaitlistSpotOpened } = await import("./notification.service");
+      notifyWaitlistSpotOpened(nextUser, circleName).catch((err: any) =>
+        console.error(`[leaveCircle] Waitlist notification failed for ${nextUser}:`, err)
+      );
+    }
+  } catch (err) {
+    console.error(`[leaveCircle] Failed to process waitlist notification for circle ${circleId}:`, err);
+  }
 }
 
 /**
@@ -610,12 +795,20 @@ export async function leaveCircle(
  * Only the creator or an admin can delete. Deleted circles are hidden from all
  * public queries but remain in the database for historical reference.
  */
-export async function deleteCircle(circleId: string, requesterId: string, isAdmin = false): Promise<void> {
+export async function deleteCircle(circleId: string, requesterId: string, isAdmin = false): Promise<Circle> {
   const { rows } = await query<{ creator_id: string }>(
     "SELECT creator_id FROM circles WHERE id = $1 AND deleted_at IS NULL",
     [circleId]
   );
   if (!rows[0]) throw new Error("Circle not found");
   if (!isAdmin && rows[0].creator_id !== requesterId) throw new Error("Only the creator can delete this circle");
-  await query("UPDATE circles SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1", [circleId]);
+  
+  const { rows: updatedRows } = await query<Circle>(
+    `UPDATE circles SET deleted_at = NOW(), updated_at = NOW() 
+     WHERE id = $1 
+     RETURNING ${CIRCLE_SELECT}`,
+    [circleId]
+  );
+  return updatedRows[0];
 }
+

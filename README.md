@@ -1,4 +1,4 @@
-<!-- #574: USDC balance display and Stellar account overview -->
+<!-- #450: Fix focus trap in modal dialogs -->
 # Ajosave
 
 > **Trustless rotating savings circles (Ajo/Esusu) on the Stellar blockchain.**  

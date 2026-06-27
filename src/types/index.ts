@@ -1,4 +1,5 @@
 import { SupportedCurrency } from "@/lib/currency";
+export type { SupportedCurrency };
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 export type UserRole = "user" | "admin";
@@ -14,8 +15,26 @@ export interface User {
   createdAt: Date;
 }
 
+export interface ReputationScore {
+  userId: string;
+  score: number;
+  level: string;
+  onTimeContributions: number;
+  circlesCompleted: number;
+  defaults: number;
+  updatedAt: Date;
+}
+
+export interface Referral {
+  id: string;
+  referrerId: string;
+  referredUserId: string;
+  code: string;
+  createdAt: Date;
+}
+
 // ─── Circle ───────────────────────────────────────────────────────────────────
-export type CircleStatus = "open" | "active" | "completed" | "cancelled";
+export type CircleStatus = "open" | "active" | "completed" | "cancelled" | "paused";
 export type CircleType = "public" | "private";
 export type CycleFrequency = "weekly" | "biweekly" | "monthly";
 export type PayoutMethod = "fixed" | "randomized";
@@ -38,7 +57,10 @@ export interface Circle {
   currentCycle: number; // 1-indexed
   memberCount?: number; // calculated field
   nextPayoutAt?: Date;
+  pausedAt?: Date | null;
   minReputation?: number; // minimum reputation score required to join (0-100)
+  yieldStrategy?: "none" | "blend";
+  penaltyPercent?: number;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date | null; // soft delete timestamp
@@ -51,6 +73,8 @@ export interface Member {
   id: string;
   circleId: string;
   userId: string;
+  displayName?: string; // joined from users table
+  stellarPublicKey?: string | null; // joined from users table (shown to circle creator)
   position: number | null; // payout order (1 = first to receive), null for pending members
   status: MemberStatus;
   hasReceivedPayout: boolean;
@@ -84,6 +108,42 @@ export interface Payout {
   paidAt: Date;
 }
 
+// ─── Dispute ─────────────────────────────────────────────────────────────────
+export type DisputeType = "missed_payout" | "wrong_amount" | "other";
+export type DisputeStatus = "open" | "investigating" | "resolved" | "rejected";
+
+export interface Dispute {
+  id: string;
+  contributionId?: string;
+  memberId: string;
+  circleId: string;
+  paystackReference?: string;
+  type: DisputeType;
+  reason: string;
+  evidence?: string;
+  status: DisputeStatus;
+  resolutionNotes?: string;
+  resolvedBy?: string;
+  createdAt: Date;
+  resolvedAt?: Date;
+}
+
+// ─── Early Exit ───────────────────────────────────────────────────────────────
+export type EarlyExitStatus = "pending" | "approved" | "rejected";
+
+export interface EarlyExitRequest {
+  id: string;
+  circleId: string;
+  memberId: string;
+  userId: string;
+  penaltyPercent: number;
+  penaltyUsdc: string;
+  refundUsdc: string;
+  status: EarlyExitStatus;
+  createdAt: Date;
+  processedAt?: Date;
+}
+
 // ─── Circle Chat ──────────────────────────────────────────────────────────────
 export interface CircleMessage {
   id: string;
@@ -103,5 +163,6 @@ export interface ApiError {
   success: false;
   error: string;
   code?: string;
+  data?: any;
 }
 export type ApiResponse<T> = ApiSuccess<T> | ApiError;

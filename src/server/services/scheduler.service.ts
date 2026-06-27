@@ -1,3 +1,4 @@
+// .
 import { query } from "@/lib/db";
 import {
   notifyPayoutReminder,
@@ -6,6 +7,7 @@ import {
 } from "./notification.service";
 import { getMissedContributions } from "./contribution.service";
 import type { Circle, Member } from "@/types";
+import { addPayoutJob } from "@/lib/queue/payoutQueue";
 
 /**
  * Send payout reminders 24 hours before scheduled payouts
@@ -37,12 +39,14 @@ export async function sendPayoutReminders(): Promise<void> {
 
       const totalPot = (
         parseFloat(circle.contributionUsdc) *
+        Number(
           (
-            await query<Member>(
+            await query<{ count: string | number }>(
               "SELECT COUNT(*) as count FROM members WHERE circle_id = $1 AND status = 'active'",
               [circle.id]
             )
           ).rows[0]?.count || 0
+        )
       ).toFixed(7);
 
       // Send reminder to recipient
@@ -89,8 +93,30 @@ export async function processMissedContributions(): Promise<void> {
           [userId]
         );
 
-        // Send notification
+        // Apply configurable penalty (record in penalties table)
+        try {
+          const penaltyPercent = Number((circle as any).penalty_percent ?? (circle as any).penaltyPercent ?? 10);
+          const penaltyAmount = (parseFloat(circle.contributionUsdc) * (penaltyPercent / 100)).toFixed(7);
+          await query(
+            `INSERT INTO penalties (circle_id, member_id, cycle_number, amount_usdc, created_at)
+             VALUES ($1,$2,$3,$4,NOW())`,
+            [circle.id, memberId, circle.currentCycle, penaltyAmount]
+          );
+        } catch (err) {
+          console.error("Failed to record penalty for defaulted member:", err);
+        }
+
+        // Send notification to member and notify creator (admin)
         await notifyMissedContribution(userId, circle.name, circle.contributionUsdc);
+        try {
+          const creatorId = (circle as any).creator_id ?? (circle as any).creatorId;
+          if (creatorId) {
+            const { notifyAdminOfDefault } = await import("@/server/services/notification.service");
+            await notifyAdminOfDefault(creatorId, userId, circle.name, (parseFloat(circle.contributionUsdc) * (Number((circle as any).penalty_percent ?? (circle as any).penaltyPercent ?? 10) / 100)).toFixed(7));
+          }
+        } catch (err) {
+          console.error("Failed to notify circle admin about default:", err);
+        }
       }
     } catch (error) {
       console.error(`Failed to process missed contributions for circle ${circle.id}:`, error);
@@ -98,11 +124,11 @@ export async function processMissedContributions(): Promise<void> {
   }
 }
 
-type ReminderWindow = { hoursLeft: number; lowerBound: string; upperBound: string };
+type ReminderWindow = { hoursLeft: number; lowerHours: number; upperHours: number };
 
 const WINDOWS: ReminderWindow[] = [
-  { hoursLeft: 24, lowerBound: "23 hours", upperBound: "25 hours" },
-  { hoursLeft: 2, lowerBound: "1 hour", upperBound: "3 hours" },
+  { hoursLeft: 24, lowerHours: 23, upperHours: 25 },
+  { hoursLeft: 2, lowerHours: 1, upperHours: 3 },
 ];
 
 /**
@@ -111,7 +137,7 @@ const WINDOWS: ReminderWindow[] = [
  * Per-circle errors are caught and logged; they do not abort the run.
  */
 export async function sendContributionReminders(): Promise<void> {
-  for (const { hoursLeft, lowerBound, upperBound } of WINDOWS) {
+  for (const { hoursLeft, lowerHours, upperHours } of WINDOWS) {
     const reminderType = `${hoursLeft}h`;
 
     const { rows: circles } = await query<Circle>(
@@ -120,8 +146,9 @@ export async function sendContributionReminders(): Promise<void> {
        FROM circles
        WHERE status = 'active'
          AND next_payout_at IS NOT NULL
-         AND next_payout_at > NOW() + INTERVAL '${lowerBound}'
-         AND next_payout_at < NOW() + INTERVAL '${upperBound}'`
+         AND next_payout_at > NOW() + ($1 * INTERVAL '1 hour')
+         AND next_payout_at < NOW() + ($2 * INTERVAL '1 hour')`,
+      [lowerHours, upperHours]
     );
 
     for (const circle of circles) {
@@ -171,7 +198,8 @@ export async function sendContributionReminders(): Promise<void> {
             member.userId,
             circle.name,
             circle.contributionUsdc,
-            hoursLeft
+            hoursLeft,
+            circle.id
           );
 
           // Record that we sent the reminder (idempotency insert)
@@ -185,6 +213,51 @@ export async function sendContributionReminders(): Promise<void> {
       } catch (error) {
         console.error(`Failed to send contribution reminders for circle ${circle.id}:`, error);
       }
+    }
+  }
+}
+
+/**
+ * Find circles with payouts due and enqueue payout jobs instead of processing inline.
+ * This keeps the cron handler lightweight and moves long-running work to background workers.
+ */
+export async function processDueCycles(): Promise<void> {
+  const { rows: circles } = await query<{ id: string; currentCycle: number }>(
+    `SELECT id, current_cycle as "currentCycle" FROM circles
+     WHERE status = 'active' AND next_payout_at IS NOT NULL AND next_payout_at <= NOW()`
+  );
+
+  for (const circle of circles) {
+    try {
+      // Skip if payout record already exists for this cycle
+      const { rows: existing } = await query(
+        `SELECT 1 FROM payouts WHERE circle_id = $1 AND cycle_number = $2 LIMIT 1`,
+        [circle.id, circle.currentCycle]
+      );
+      if (existing.length > 0) continue;
+
+      // Gate: only proceed if all active members have a confirmed contribution this cycle
+      const { rows: unpaid } = await query(
+        `SELECT m.id FROM members m
+         WHERE m.circle_id = $1 AND m.status = 'active'
+           AND NOT EXISTS (
+             SELECT 1 FROM contributions c
+             WHERE c.member_id = m.id
+               AND c.cycle_number = $2
+               AND c.status = 'confirmed'
+           )`,
+        [circle.id, circle.currentCycle]
+      );
+
+      if (unpaid.length > 0) {
+        console.log(`[scheduler] Skipping payout for circle ${circle.id} — ${unpaid.length} member(s) have not fully paid`);
+        continue;
+      }
+
+      await addPayoutJob(circle.id, circle.currentCycle);
+      console.log(`[scheduler] Enqueued payout job for circle ${circle.id} cycle ${circle.currentCycle}`);
+    } catch (err) {
+      console.error(`[scheduler] Failed to enqueue payout for circle ${circle.id}:`, err);
     }
   }
 }
