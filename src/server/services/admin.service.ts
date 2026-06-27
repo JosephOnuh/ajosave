@@ -10,35 +10,57 @@ export interface AdminPayoutRow extends Payout {
   recipientUserId: string;
 }
 
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 /**
  * List all circles with their current member count.
  * Pass includeDeleted=true to also return soft-deleted circles.
  */
-export async function adminListCircles(includeDeleted = false): Promise<AdminCircleRow[]> {
-  const { rows } = await query<AdminCircleRow>(
-    `SELECT
-       c.id, c.name, c.creator_id as "creatorId",
-       c.contribution_usdc as "contributionUsdc",
-       c.contribution_fiat as "contributionFiat",
-       c.contribution_currency as "contributionCurrency",
-       c.circle_type as "circleType",
-       c.max_members as "maxMembers",
-       c.cycle_frequency as "cycleFrequency",
-       c.status, c.contract_id as "contractId",
-       c.current_cycle as "currentCycle",
-       c.next_payout_at as "nextPayoutAt",
-       c.created_at as "createdAt",
-       c.updated_at as "updatedAt",
-       c.deleted_at as "deletedAt",
-       COUNT(m.id)::int AS "memberCount"
-     FROM circles c
-     LEFT JOIN members m ON m.circle_id = c.id
-     WHERE ($1::boolean = true OR c.deleted_at IS NULL)
-     GROUP BY c.id
-     ORDER BY c.created_at DESC`,
-    [includeDeleted]
-  );
-  return rows;
+export async function adminListCircles(
+  includeDeleted = false,
+  page = 1,
+  pageSize = 20
+): Promise<PaginatedResult<AdminCircleRow>> {
+  const offset = (page - 1) * pageSize;
+  const [{ rows }, { rows: countRows }] = await Promise.all([
+    query<AdminCircleRow>(
+      `SELECT
+         c.id, c.name, c.creator_id as "creatorId",
+         c.contribution_usdc as "contributionUsdc",
+         c.contribution_fiat as "contributionFiat",
+         c.contribution_currency as "contributionCurrency",
+         c.circle_type as "circleType",
+         c.max_members as "maxMembers",
+         c.cycle_frequency as "cycleFrequency",
+         c.status, c.contract_id as "contractId",
+         c.current_cycle as "currentCycle",
+         c.next_payout_at as "nextPayoutAt",
+         c.created_at as "createdAt",
+         c.updated_at as "updatedAt",
+         c.deleted_at as "deletedAt",
+         COUNT(m.id)::int AS "memberCount"
+       FROM circles c
+       LEFT JOIN members m ON m.circle_id = c.id
+       WHERE ($1::boolean = true OR c.deleted_at IS NULL)
+       GROUP BY c.id
+       ORDER BY c.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [includeDeleted, pageSize, offset]
+    ),
+    query<{ total: string }>(
+      `SELECT COUNT(DISTINCT c.id)::text AS total FROM circles c
+       WHERE ($1::boolean = true OR c.deleted_at IS NULL)`,
+      [includeDeleted]
+    ),
+  ]);
+  const total = parseInt(countRows[0]?.total ?? "0", 10);
+  return { data: rows, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
 }
 
 /**
@@ -81,20 +103,34 @@ export async function adminSoftDeleteUser(userId: string): Promise<void> {
 /**
  * List all users for admin panel.
  */
-export async function adminListUsers(search?: string): Promise<{ id: string; displayName: string; phone: string; email: string | null; role: string; reputationScore: number; createdAt: Date; deletedAt: Date | null }[]> {
-  const params: string[] = [];
+export async function adminListUsers(
+  search?: string,
+  page = 1,
+  pageSize = 20
+): Promise<PaginatedResult<{ id: string; displayName: string; phone: string; email: string | null; role: string; reputationScore: number; createdAt: Date; deletedAt: Date | null }>> {
+  const offset = (page - 1) * pageSize;
+  const params: (string | number)[] = [];
   let where = "WHERE deleted_at IS NULL";
   if (search) {
     params.push(`%${search}%`);
     where += ` AND (display_name ILIKE $1 OR phone ILIKE $1 OR email ILIKE $1)`;
   }
-  const { rows } = await query(
-    `SELECT id, display_name as "displayName", phone, email, role,
-            reputation_score as "reputationScore", created_at as "createdAt", deleted_at as "deletedAt"
-     FROM users ${where} ORDER BY created_at DESC LIMIT 200`,
-    params
-  );
-  return rows;
+  const limitIdx = params.length + 1;
+  const offsetIdx = params.length + 2;
+  const [{ rows }, { rows: countRows }] = await Promise.all([
+    query(
+      `SELECT id, display_name as "displayName", phone, email, role,
+              reputation_score as "reputationScore", created_at as "createdAt", deleted_at as "deletedAt"
+       FROM users ${where} ORDER BY created_at DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      [...params, pageSize, offset]
+    ),
+    query<{ total: string }>(
+      `SELECT COUNT(*)::text AS total FROM users ${where}`,
+      params
+    ),
+  ]);
+  const total = parseInt(countRows[0]?.total ?? "0", 10);
+  return { data: rows as any[], total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
 }
 
 /**
@@ -316,3 +352,4 @@ export async function adminGetPayoutRecipientKey(
     cycleNumber: row.cycleNumber,
   };
 }
+

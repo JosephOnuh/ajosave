@@ -253,3 +253,4 @@ export function enqueueStellarTransaction<T>(fn: () => Promise<T>): Promise<T> {
   _txQueue = next.catch(() => {}); // keep queue alive even if fn throws
   return next as Promise<T>;
 }
+

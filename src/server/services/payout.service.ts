@@ -53,14 +53,24 @@ export async function processCyclePayout(
       parseFloat(circle.contributionUsdc) * activeMembers.length
     ).toFixed(7);
 
-    const recipientMemberForGuard = circleMembers[circle.currentCycle - 1];
-    if (recipientMemberForGuard?.hasReceivedPayout) {
+    const recipientMember = circleMembers.find(
+      (m) => m.position === circle.currentCycle && m.status === "active"
+    );
+    if (!recipientMember) {
+      logger.warn(
+        { circleId, cycle: circle.currentCycle },
+        "[payout] No active member at position for current cycle — payout skipped"
+      );
+      throw new Error(
+        `No active member at position ${circle.currentCycle} — payout skipped`
+      );
+    }
+    if (recipientMember.hasReceivedPayout) {
       throw new Error(`Member has already received payout for cycle ${circle.currentCycle}`);
     }
 
     const payoutId = randomUUID();
-    const recipientMember = circleMembers[circle.currentCycle - 1];
-    const recipientMemberId = recipientMember?.id ?? "";
+    const recipientMemberId = recipientMember.id;
 
     // Insert payout record as 'pending' before attempting
     await query(
@@ -145,18 +155,15 @@ export async function processCyclePayout(
     }
 
     // Send SMS notifications to all members (async, non-blocking)
-    if (recipientMember) {
-      const memberUserIds = circleMembers.map(m => m.userId);
-      const { rows: recipientUser } = await query<{ display_name: string }>(
-        "SELECT display_name FROM users WHERE id = $1",
-        [recipientMember.userId]
-      );
-      const recipientName = recipientUser[0]?.display_name ?? "Member";
-
-      notifyPayoutProcessed(memberUserIds, circle.name, totalPot, recipientName).catch(err => {
-        console.error("Failed to send payout notifications:", err);
-      });
-    }
+    const memberUserIds = circleMembers.map(m => m.userId);
+    const { rows: recipientUser } = await query<{ display_name: string }>(
+      "SELECT display_name FROM users WHERE id = $1",
+      [recipientMember.userId]
+    );
+    const recipientName = recipientUser[0]?.display_name ?? "Member";
+    notifyPayoutProcessed(memberUserIds, circle.name, totalPot, recipientName).catch(err => {
+      console.error("Failed to send payout notifications:", err);
+    });
 
     if (circle.currentCycle >= circleMembers.length) {
       await updateCircleStatus(circleId, "completed");
@@ -239,3 +246,4 @@ export async function getPayoutHistoryByCircle(circleId: string): Promise<Payout
   );
   return rows;
 }
+

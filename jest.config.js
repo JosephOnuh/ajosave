@@ -1,6 +1,10 @@
 const nextJest = require("next/jest");
 const createJestConfig = nextJest({ dir: "./" });
 
+// Resolved by createJestConfig; projects must opt in explicitly since Jest does
+// not propagate parent-level transforms to project sub-configs.
+const swcTransformer = require.resolve("next/dist/build/swc/jest-transformer");
+
 /** @type {import('jest').Config} */
 const config = {
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
@@ -33,10 +37,7 @@ const config = {
       testPathPattern: "src/(?!__tests__/integration)",
       setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
       moduleNameMapper: { "^@/(.*)$": "<rootDir>/src/$1" },
-      extensionsToTreatAsEsm: [],
-      transform: {
-        "^.+\\.(js|jsx|ts|tsx|mjs)$": ["<rootDir>/node_modules/next/dist/build/swc/jest-transformer.js", {}],
-      },
+      transform: { "^.+\\.(js|jsx|ts|tsx|mjs)$": swcTransformer },
     },
     {
       displayName: "integration",
@@ -44,9 +45,7 @@ const config = {
       testPathPattern: "src/__tests__/integration/.*\\.test\\.ts$",
       setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
       moduleNameMapper: { "^@/(.*)$": "<rootDir>/src/$1" },
-      transform: {
-        "^.+\\.(js|jsx|ts|tsx|mjs)$": ["<rootDir>/node_modules/next/dist/build/swc/jest-transformer.js", {}],
-      },
+      transform: { "^.+\\.(js|jsx|ts|tsx|mjs)$": swcTransformer },
     },
   ],
 };

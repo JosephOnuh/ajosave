@@ -184,6 +184,12 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Build Next.js
         run: npm run build
+      - name: Start Next.js server
+        run: npx next start &
+        env:
+          PORT: 3000
+      - name: Wait for server to be ready
+        run: npx wait-on http://localhost:3000 --timeout 60000
       - name: Run E2E tests
         run: npx playwright test --reporter=github
         env:
