@@ -89,8 +89,10 @@ const nextConfig = {
 export default bundleAnalyzer(withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
   silent: true,
   widenClientFileUpload: true,
   hideSourceMaps: true,
   disableLogger: true,
+  tunnelRoute: "/api/monitoring",
 }));
