@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { listOpenCircles } from "@/server/services/circle.service";
 import { CircleCard } from "@/components/circle/CircleCard";
+import { CircleCardWrapper } from "@/components/circle/CircleCardWrapper";
 import { CircleFilters } from "@/components/circle/CircleFilters";
 import { Pagination } from "@/components/ui/Pagination";
 import Link from "next/link";
@@ -57,9 +58,15 @@ export default async function CirclesPage({ searchParams }: Props) {
           </div>
         ) : (
           <>
-            <div className={styles.grid}>
+            <div className={styles.grid} role="list" aria-label="Available circles">
               {circles.map((circle) => (
-                <CircleCard key={circle.id} circle={circle} members={[]} showJoin />
+                <CircleCardWrapper
+                  key={circle.id}
+                  href={`/circles/${circle.id}`}
+                  className={styles.cardWrapper}
+                >
+                  <CircleCard circle={circle} members={[]} showJoin />
+                </CircleCardWrapper>
               ))}
             </div>
             <Pagination page={page} total={total} limit={PAGE_SIZE} />
