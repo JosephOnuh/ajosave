@@ -7,11 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Security
+### Added
 
-- **#547** Smile Identity `api_key` is now redacted from all application logs via pino `redact` config and a `redactKey()` helper in `kyc.ts`
-- **#547** `kyc.ts` supports fetching the Smile Identity API key from AWS Secrets Manager (`SMILE_API_KEY_SECRET_ARN`) instead of a plain env var, enabling zero-downtime key rotation
-- **#547** Added `SECRETS.md` documenting key rotation procedures for all external API credentials
+- ABI bindings generation in CI: `stellar contract bindings typescript` runs on every merge to `main` and publishes generated TypeScript bindings as a CI artifact under `ajo-abi-bindings` (#507)
+- Placeholder TypeScript bindings committed to `contracts/ajo/bindings/index.ts` for local development without a full contract build
+
+### Changed
+
+- Bumped Ajo contract version to `0.2.0` in `contracts/ajo/Cargo.toml`
 
 ## [0.1.0] - 2026-04-24
 

@@ -87,9 +87,9 @@ export function DisputeForm({ circleId, contributionId, memberId, onSuccess }: D
           className={styles.textarea}
           required
           minLength={10}
-          maxLength={500}
+          maxLength={2000}
         />
-        <span className={styles.hint}>{reason.length}/500</span>
+        <span className={styles.hint}>{reason.length}/2000</span>
       </div>
 
       <div className={styles.field}>
@@ -100,7 +100,7 @@ export function DisputeForm({ circleId, contributionId, memberId, onSuccess }: D
           onChange={(e) => setEvidence(e.target.value)}
           placeholder="Transaction IDs, screenshots descriptions, or any supporting information..."
           className={styles.textarea}
-          maxLength={1000}
+          maxLength={2000}
         />
       </div>
 

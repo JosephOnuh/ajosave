@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { decrypt, encrypt } from "@/lib/encryption";
+import { withSanitizedBody } from "@/server/middleware";
 import { z } from "zod";
 import type { ApiResponse } from "@/types";
 

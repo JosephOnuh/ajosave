@@ -1,3 +1,11 @@
+const nextJest = require("next/jest");
+const createJestConfig = nextJest({ dir: "./" });
+const baseConfig = { transform: { "^.+\\.(ts|tsx|js|jsx)$": ["babel-jest", { presets: ["next/babel"] }] } };
+
+// Resolved by createJestConfig; projects must opt in explicitly since Jest does
+// not propagate parent-level transforms to project sub-configs.
+const swcTransformer = require.resolve("next/dist/build/swc/jest-transformer");
+
 /** @type {import('jest').Config} */
 const config = {
   preset: "ts-jest",
@@ -25,6 +33,7 @@ const config = {
       testPathIgnorePatterns: ["<rootDir>/src/__tests__/integration/"],
       setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
       moduleNameMapper: { "^@/(.*)$": "<rootDir>/src/$1" },
+      transform: { "^.+\\.(js|jsx|ts|tsx|mjs)$": swcTransformer },
     },
     {
       displayName: "integration",
@@ -33,6 +42,7 @@ const config = {
       testMatch: ["<rootDir>/src/__tests__/integration/**/*.test.ts"],
       setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
       moduleNameMapper: { "^@/(.*)$": "<rootDir>/src/$1" },
+      transform: { "^.+\\.(js|jsx|ts|tsx|mjs)$": swcTransformer },
     },
   ],
 };

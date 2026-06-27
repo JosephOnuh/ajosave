@@ -33,8 +33,17 @@ services:
 
   redis:
     image: redis:7-alpine
+    # maxmemory: cap at 256 MB (adjust to ~25% of available RAM for your server).
+    # maxmemory-policy: allkeys-lru evicts the least-recently-used key when memory is full,
+    #   keeping critical paths (OTP, rate-limit, locks) alive as long as they are active.
+    # OTP keys are set with EX 300 (5 min), rate-limit keys with EX matching their window.
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save ""
     volumes:
-      - redis_data:/data
+      - redis_data:/data   # /data is where Redis writes appendonly.aof
     ports:
       - "6379:6379"
     healthcheck:

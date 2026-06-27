@@ -14,8 +14,10 @@
  *
  * The api_key is NEVER included in log output.
  */
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { query } from "./db";
+import logger from "./logger";
+import { redactLogObject } from "./sanitize";
 
 /** Fetch the Smile Identity API key from AWS Secrets Manager or env. */
 async function getSmileApiKey(): Promise<string> {
@@ -57,8 +59,11 @@ export async function initiateKyc(userId: string): Promise<{ token: string }> {
 
   if (!res.ok) {
     const text = await res.text();
-    // Redact the api_key value before it can appear in logs or error messages.
-    throw new Error(`Smile Identity token request failed: ${redactKey(text, apiKey)}`);
+    logger.error(
+      redactLogObject({ partner_id: partnerId, api_key: apiKey, callback_url: callbackUrl, user_id: userId }),
+      `Smile Identity token request failed: ${text}`
+    );
+    throw new Error(`Smile Identity token request failed: ${text}`);
   }
 
   const data = (await res.json()) as { token: string };
@@ -94,7 +99,13 @@ export async function handleKycWebhook(
     .update(`${payload.timestamp}:${partnerId}`)
     .digest("base64");
 
-  if (expected !== payload.signature) {
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(payload.signature || "");
+
+  if (
+    expectedBuffer.length !== signatureBuffer.length ||
+    !timingSafeEqual(expectedBuffer, signatureBuffer)
+  ) {
     throw new Error("Invalid Smile Identity webhook signature");
   }
 

@@ -5,6 +5,7 @@ import { query } from "@/lib/db";
 import { withErrorHandler, withRateLimit, withSanitizedBody } from "@/server/middleware";
 import { getMessages, postMessage } from "@/server/services/chat.service";
 import { broadcastChatMessage } from "@/server/websocket";
+import { circleMessageSchema } from "@/types/schemas";
 import type { ApiResponse, CircleMessage } from "@/types";
 
 // ─── GET /api/circles/[id]/chat ───────────────────────────────────────────────
@@ -101,23 +102,16 @@ export const POST = withErrorHandler(
       }
 
       // Parse and validate request body
-      const { content } = await req.json();
-
-      if (!content || typeof content !== "string" || content.trim().length === 0) {
+      const body = await req.json();
+      const parsed = circleMessageSchema.safeParse(body);
+      if (!parsed.success) {
         return NextResponse.json<ApiResponse<never>>(
-          { success: false, error: "content is required and must not be empty" },
+          { success: false, error: parsed.error.errors[0].message },
           { status: 400 }
         );
       }
 
-      if (content.length > 1000) {
-        return NextResponse.json<ApiResponse<never>>(
-          { success: false, error: "content must not exceed 1000 characters" },
-          { status: 400 }
-        );
-      }
-
-      const message = await postMessage(circleId, userId, content);
+      const message = await postMessage(circleId, userId, parsed.data.content);
 
       // Fire-and-forget broadcast; a failed broadcast does not roll back the DB insert
       broadcastChatMessage(circleId, message);

@@ -24,6 +24,25 @@ export function withAuth(handler: Handler): Handler {
   };
 }
 
+const ADMIN_ROLE_CACHE_TTL_S = 60;
+
+async function getDbRole(userId: string): Promise<string | null> {
+  const redis = await getRedis();
+  const cacheKey = `admin:role:${userId}`;
+
+  const cached = await redis.get(cacheKey);
+  if (cached !== null) return cached;
+
+  const { query: dbQuery } = await import("@/lib/db");
+  const { rows } = await dbQuery<{ role: string }>(
+    "SELECT role FROM users WHERE id = $1",
+    [userId]
+  );
+  const role = rows[0]?.role ?? "";
+  await redis.set(cacheKey, role, { EX: ADMIN_ROLE_CACHE_TTL_S });
+  return role;
+}
+
 export function withAdminAuth(handler: Handler): Handler {
   return async (req, ctx) => {
     const session = await getServerSession(authOptions);
@@ -33,13 +52,23 @@ export function withAdminAuth(handler: Handler): Handler {
         { status: 401 }
       );
     }
-    const role = (session.user as { role?: string }).role;
-    if (role !== "admin") {
+
+    const userId = (session.user as { id?: string }).id;
+    if (!userId) {
       return NextResponse.json<ApiError>(
         { success: false, error: "Forbidden", code: "FORBIDDEN" },
         { status: 403 }
       );
     }
+
+    const dbRole = await getDbRole(userId);
+    if (dbRole !== "admin") {
+      return NextResponse.json<ApiError>(
+        { success: false, error: "Forbidden", code: "FORBIDDEN" },
+        { status: 403 }
+      );
+    }
+
     return handler(req, ctx);
   };
 }
@@ -150,6 +179,34 @@ export function withRateLimit(
     response.headers.set("X-RateLimit-Remaining", String(result.remaining));
     response.headers.set("X-RateLimit-Reset", String(Math.ceil(result.resetAt / 1000)));
     return response;
+  };
+}
+
+/**
+ * Middleware wrapper that sanitizes the request body before passing to the handler.
+ * Strips HTML tags from string fields to prevent XSS payloads reaching the database.
+ */
+export function withSanitizedBody(handler: Handler): Handler {
+  return async (req, ctx) => {
+    const contentType = req.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      try {
+        const raw = await req.json();
+        const { sanitizeBody } = await import("@/lib/sanitize");
+        const sanitized = sanitizeBody(raw);
+        // Reconstruct the request with the sanitized body
+        const newReq = new NextRequest(req.url, {
+          method: req.method,
+          headers: req.headers,
+          body: JSON.stringify(sanitized),
+        });
+        return handler(newReq, ctx);
+      } catch {
+        // If JSON parsing fails, pass through — downstream handler will reject it
+        return handler(req, ctx);
+      }
+    }
+    return handler(req, ctx);
   };
 }
 

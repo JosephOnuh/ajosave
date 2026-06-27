@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { listOpenCircles } from "@/server/services/circle.service";
 import { CircleCard } from "@/components/circle/CircleCard";
+import { CircleCardWrapper } from "@/components/circle/CircleCardWrapper";
 import { CircleFilters } from "@/components/circle/CircleFilters";
 import { Pagination } from "@/components/ui/Pagination";
+import dynamic from "next/dynamic";
+import CirclesBrowser from "@/components/circle/CirclesBrowser";
 import Link from "next/link";
 import styles from "./page.module.css";
 
@@ -37,6 +40,7 @@ export default async function CirclesPage({ searchParams }: Props) {
     ? `${searchParams.status.charAt(0).toUpperCase() + searchParams.status.slice(1)} Circles`
     : "Open Circles";
 
+  // Render server-side initial results and hydrate client-side infinite scroll
   return (
     <div className={styles.page}>
       <div className="container">
@@ -57,9 +61,15 @@ export default async function CirclesPage({ searchParams }: Props) {
           </div>
         ) : (
           <>
-            <div className={styles.grid}>
+            <div className={styles.grid} role="list" aria-label="Available circles">
               {circles.map((circle) => (
-                <CircleCard key={circle.id} circle={circle} members={[]} showJoin />
+                <CircleCardWrapper
+                  key={circle.id}
+                  href={`/circles/${circle.id}`}
+                  className={styles.cardWrapper}
+                >
+                  <CircleCard circle={circle} members={[]} showJoin />
+                </CircleCardWrapper>
               ))}
             </div>
             <Pagination page={page} total={total} limit={PAGE_SIZE} />
@@ -69,3 +79,4 @@ export default async function CirclesPage({ searchParams }: Props) {
     </div>
   );
 }
+

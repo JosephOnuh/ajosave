@@ -1,3 +1,5 @@
+export * from "./circle";
+// .
 import { query, transaction } from "@/lib/db";
 import { randomUUID } from "crypto";
 import type { Circle, Member, CircleStatus, CycleFrequency } from "@/types";
@@ -55,7 +57,7 @@ export const fiatToUsdc = async (amount: number, currency: string): Promise<stri
 };
 
 const CIRCLE_SELECT = `
-  id, name, creator_id as "creatorId", 
+  id, name, description, creator_id as "creatorId", 
   contribution_usdc as "contributionUsdc", 
   contribution_fiat as "contributionFiat", 
   contribution_currency as "contributionCurrency",
@@ -80,6 +82,7 @@ const CIRCLE_SELECT = `
 const MEMBER_SELECT = `
   m.id, m.circle_id as "circleId", m.user_id as "userId",
   u.display_name as "displayName",
+  u.stellar_public_key as "stellarPublicKey",
   m.position, m.status, m.has_received_payout as "hasReceivedPayout",
   m.joined_at as "joinedAt", m.reviewed_at as "reviewedAt"
 `;
@@ -101,11 +104,11 @@ export async function createCircle(
 
   const { rows } = await query<Circle>(
     `INSERT INTO circles
-       (id, name, creator_id, contribution_usdc, contribution_fiat, contribution_currency,
+       (id, name, description, creator_id, contribution_usdc, contribution_fiat, contribution_currency,
         max_members, cycle_frequency, payout_method, randomization_seed, yield_strategy, penalty_percent, contract_id, grace_period_hours, status, current_cycle, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'open',0,NOW(),NOW())
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'open',0,NOW(),NOW())
      RETURNING ${CIRCLE_SELECT}`,
-    [id, input.name, creatorId, contributionUsdc, input.contributionAmount, input.contributionCurrency,
+    [id, input.name, input.description || null, creatorId, contributionUsdc, input.contributionAmount, input.contributionCurrency,
      input.maxMembers, input.cycleFrequency, input.payoutMethod, null, input.yieldStrategy, input.penaltyPercent, contractId, input.gracePeriodHours ?? 24]
   );
   await invalidateCache(`${CACHE_KEY}:*`);
@@ -206,7 +209,7 @@ export async function listOpenCircles(
 
 export async function getCirclesByUser(userId: string): Promise<Circle[]> {
   const { rows } = await query<Circle>(
-    `SELECT DISTINCT c.id, c.name, c.creator_id as "creatorId", 
+    `SELECT DISTINCT c.id, c.name, c.description, c.creator_id as "creatorId", 
         c.contribution_usdc as "contributionUsdc", 
         c.contribution_fiat as "contributionFiat", 
         c.contribution_currency as "contributionCurrency",
@@ -540,8 +543,8 @@ export async function cancelCircle(
        WHERE id = $1
        RETURNING id, name, creator_id as "creatorId",
                  contribution_usdc as "contributionUsdc",
-                 contribution_ngn as "contributionFiat",
-                 'NGN' as "contributionCurrency",
+                 contribution_fiat as "contributionFiat",
+                 contribution_currency as "contributionCurrency",
                  max_members as "maxMembers",
                  cycle_frequency as "cycleFrequency",
                  payout_method as "payoutMethod",
@@ -809,3 +812,4 @@ export async function deleteCircle(circleId: string, requesterId: string, isAdmi
   );
   return updatedRows[0];
 }
+

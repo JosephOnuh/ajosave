@@ -2,6 +2,7 @@ import { query, transaction } from "@/lib/db";
 import { sendUsdcPayment, validateStellarRecipient } from "@/lib/stellar";
 import { invokeContractPayout } from "@/lib/soroban";
 import { getCircleById, getMembersByCircle, updateCircleStatus } from "./circle.service";
+import { usdcToStroops, stroopsToUsdc } from "@/lib/currency";
 import { withPayoutLock, PayoutLockError } from "./payout-lock";
 import { notifyPayoutProcessed, notifyCircleCompleted } from "./notification.service";
 import { mintCertificate } from "./certificate.service";
@@ -49,18 +50,28 @@ export async function processCyclePayout(
 
     const circleMembers = await getMembersByCircle(circleId);
     const activeMembers = circleMembers.filter((m) => m.status === "active");
-    const totalPot = (
-      parseFloat(circle.contributionUsdc) * activeMembers.length
-    ).toFixed(7);
+    const totalPot = stroopsToUsdc(
+      usdcToStroops(circle.contributionUsdc) * BigInt(activeMembers.length)
+    );
 
-    const recipientMemberForGuard = circleMembers[circle.currentCycle - 1];
-    if (recipientMemberForGuard?.hasReceivedPayout) {
+    const recipientMember = circleMembers.find(
+      (m) => m.position === circle.currentCycle && m.status === "active"
+    );
+    if (!recipientMember) {
+      logger.warn(
+        { circleId, cycle: circle.currentCycle },
+        "[payout] No active member at position for current cycle — payout skipped"
+      );
+      throw new Error(
+        `No active member at position ${circle.currentCycle} — payout skipped`
+      );
+    }
+    if (recipientMember.hasReceivedPayout) {
       throw new Error(`Member has already received payout for cycle ${circle.currentCycle}`);
     }
 
     const payoutId = randomUUID();
-    const recipientMember = circleMembers[circle.currentCycle - 1];
-    const recipientMemberId = recipientMember?.id ?? "";
+    const recipientMemberId = recipientMember.id;
 
     // Insert payout record as 'pending' before attempting
     await query(
@@ -93,7 +104,7 @@ export async function processCyclePayout(
           txHash = await invokeContractPayout(circle.contractId);
         } else {
           await validateStellarRecipient(recipientStellarKey);
-          txHash = await sendUsdcPayment(recipientStellarKey, totalPot);
+          txHash = await sendUsdcPayment(recipientStellarKey, totalPot, `ajo-${circleId}-cycle-${circle.currentCycle}`);
         }
         lastError = "";
         break;
@@ -145,18 +156,15 @@ export async function processCyclePayout(
     }
 
     // Send SMS notifications to all members (async, non-blocking)
-    if (recipientMember) {
-      const memberUserIds = circleMembers.map(m => m.userId);
-      const { rows: recipientUser } = await query<{ display_name: string }>(
-        "SELECT display_name FROM users WHERE id = $1",
-        [recipientMember.userId]
-      );
-      const recipientName = recipientUser[0]?.display_name ?? "Member";
-
-      notifyPayoutProcessed(memberUserIds, circle.name, totalPot, recipientName).catch(err => {
-        console.error("Failed to send payout notifications:", err);
-      });
-    }
+    const memberUserIds = circleMembers.map(m => m.userId);
+    const { rows: recipientUser } = await query<{ display_name: string }>(
+      "SELECT display_name FROM users WHERE id = $1",
+      [recipientMember.userId]
+    );
+    const recipientName = recipientUser[0]?.display_name ?? "Member";
+    notifyPayoutProcessed(memberUserIds, circle.name, totalPot, recipientName).catch(err => {
+      console.error("Failed to send payout notifications:", err);
+    });
 
     if (circle.currentCycle >= circleMembers.length) {
       await updateCircleStatus(circleId, "completed");
@@ -239,3 +247,4 @@ export async function getPayoutHistoryByCircle(circleId: string): Promise<Payout
   );
   return rows;
 }
+
