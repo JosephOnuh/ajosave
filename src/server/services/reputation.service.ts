@@ -1,30 +1,14 @@
 import { query } from "@/lib/db";
+import { getOnChainReputation } from "@/lib/reputation";
 
 // Score adjustments.
 const SCORE_INCREMENT = 5; // Points added on-time contribution
 const SCORE_DECREMENT = 10; // Points deducted on missed contribution
 const MIN_SCORE = 0;
-const MAX_SCORE = 100;
-
-/**
- * Update user reputation score when a contribution is confirmed.
- * Called after successful payment confirmation.
- */
-export async function incrementReputationOnContribution(userId: string): Promise<number> {
-  const { rows } = await query<{ reputation_score: number }>(
-    `UPDATE users 
-     SET reputation_score = LEAST(reputation_score + $1, $2)
-     WHERE id = $3
-     RETURNING reputation_score`,
-    [SCORE_INCREMENT, MAX_SCORE, userId]
-  );
-
-  return rows[0]?.reputation_score ?? 0;
-}
 
 /**
  * Update user reputation score when a contribution is missed/defaulted.
- * Called when processing missed contributions.
+ * DB is updated as a cache; authoritative value lives on-chain.
  */
 export async function decrementReputationOnMissedContribution(userId: string): Promise<number> {
   const { rows } = await query<{ reputation_score: number }>(
@@ -34,20 +18,32 @@ export async function decrementReputationOnMissedContribution(userId: string): P
      RETURNING reputation_score`,
     [SCORE_DECREMENT, MIN_SCORE, userId]
   );
-
   return rows[0]?.reputation_score ?? 0;
 }
 
 /**
- * Get user's current reputation score.
+ * Get user's authoritative reputation score from the Soroban contract.
+ * Falls back to DB cache when stellar_public_key is not set or chain is unreachable.
  */
 export async function getUserReputation(userId: string): Promise<number> {
-  const { rows } = await query<{ reputation_score: number }>(
-    `SELECT reputation_score FROM users WHERE id = $1`,
+  const { rows } = await query<{ reputation_score: number; stellar_public_key: string | null }>(
+    `SELECT reputation_score, stellar_public_key FROM users WHERE id = $1`,
     [userId]
   );
+  const user = rows[0];
+  if (!user) return 0;
 
-  return rows[0]?.reputation_score ?? 0;
+  if (user.stellar_public_key) {
+    const onChainScore = await getOnChainReputation(user.stellar_public_key);
+    // Keep DB in sync as a cache
+    if (onChainScore !== user.reputation_score) {
+      await query("UPDATE users SET reputation_score = $1 WHERE id = $2", [onChainScore, userId]);
+    }
+    return onChainScore;
+  }
+
+  // Fallback: no Stellar key yet, return DB value
+  return user.reputation_score ?? 0;
 }
 
 /**
@@ -58,11 +54,7 @@ export async function checkReputationGate(
   requiredScore: number
 ): Promise<{ eligible: boolean; currentScore: number }> {
   const currentScore = await getUserReputation(userId);
-
-  return {
-    eligible: currentScore >= requiredScore,
-    currentScore,
-  };
+  return { eligible: currentScore >= requiredScore, currentScore };
 }
 
 /**
