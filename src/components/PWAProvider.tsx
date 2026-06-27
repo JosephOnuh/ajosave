@@ -41,17 +41,26 @@ export function PWAProvider() {
   const [showBanner, setShowBanner] = useState(false);
 
   useEffect(() => {
-    // Register service worker
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
 
-    // Capture install prompt
+    const dismissedUntil = Number(localStorage.getItem(DISMISS_KEY) ?? 0);
+    const visited = Number(localStorage.getItem(PROMPT_VISITS_KEY) ?? 0) + 1;
+    localStorage.setItem(PROMPT_VISITS_KEY, String(visited));
+
+    if (dismissedUntil > Date.now()) {
+      return;
+    }
+
     const handler = (e: Event) => {
       e.preventDefault();
       setInstallPrompt(e as BeforeInstallPromptEvent);
-      setShowBanner(true);
+      if (visited >= 2) {
+        setShowBanner(true);
+      }
     };
+
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
