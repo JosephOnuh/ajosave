@@ -13,8 +13,21 @@ jest.mock("@/lib/lockout", () => ({
   resetLockout: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("@/lib/db", () => ({
-  query: jest.fn().mockResolvedValue({
-    rows: [{ id: "u1", phone: "+2348012345678", display_name: "Test", role: "user" }],
+  query: jest.fn().mockImplementation(async (text: string, params: any[]) => {
+    // Simulate SELECT by phone_hash
+    if (text.includes("WHERE phone_hash = $1")) {
+      if (params && params[0] === "hmac-+2348012345678") {
+        return { rows: [{ id: "u1", phone: "enc-+2348012345678", display_name: "Test", role: "user" }] };
+      }
+      return { rows: [] };
+    }
+
+    // Simulate INSERT returning created user
+    if (text.trim().startsWith("INSERT INTO users")) {
+      return { rows: [{ id: "u2", phone: params?.[0] ?? "", display_name: "Ajosave User", role: "user" }] };
+    }
+
+    return { rows: [] };
   }),
 }));
 jest.mock("@/lib/redis", () => ({

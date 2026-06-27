@@ -1,3 +1,30 @@
+/*
+ Script: Backfill existing plaintext `users.phone` rows by encrypting phone
+ and populating `phone_hash`. Run with environment variables PII_ENCRYPTION_KEY
+ and PII_HMAC_KEY set. Example:
+   npx ts-node scripts/backfill-pii-encryption.ts
+*/
+import { query } from "@/lib/db";
+import { encrypt, hmacIndex } from "@/lib/encryption";
+
+async function main() {
+  console.log("Scanning users for plaintext phone values...");
+  const { rows } = await query<{ id: string; phone: string }>("SELECT id, phone FROM users WHERE phone IS NOT NULL AND phone_hash IS NULL");
+  console.log(`Found ${rows.length} rows to backfill`);
+  for (const r of rows) {
+    try {
+      const encrypted = encrypt(r.phone);
+      const hash = hmacIndex(r.phone);
+      await query("UPDATE users SET phone = $1, phone_hash = $2 WHERE id = $3", [encrypted, hash, r.id]);
+      console.log(`Backfilled user ${r.id}`);
+    } catch (err) {
+      console.error(`Failed to backfill ${r.id}:`, err);
+    }
+  }
+  console.log("Done.");
+}
+
+main().catch((err) => { console.error(err); process.exit(1); });
 /**
  * Backfill script — PII Encryption (Issue #138)
  *
