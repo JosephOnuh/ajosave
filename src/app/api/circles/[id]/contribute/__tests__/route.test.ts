@@ -18,6 +18,7 @@ jest.mock("@/server/config", () => ({
 }));
 jest.mock("@/server/middleware", () => ({
   withErrorHandler: (fn: Function) => fn,
+  withIdempotency: (fn: Function) => fn,
 }));
 
 import { getServerSession } from "next-auth";
