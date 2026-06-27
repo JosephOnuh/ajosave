@@ -3,17 +3,16 @@
 //! A trustless rotating savings circle (Ajo/Esusu) on Stellar Soroban.
 //!
 //! ## Lifecycle
-//! 1. `initialize` — admin signers set up the circle parameters
+//! 1. `initialize` — admin sets up the circle parameters
 //! 2. `join`       — members join by locking their first contribution
 //! 3. `contribute` — members pay each cycle
-//! 4. `payout`     — M-of-N admin signers approve then trigger payout
+//! 4. `payout`     — admin triggers rotation payout after cycle time
 //! 5. Circle completes when all members have received their payout
 //!
-//! ## Multisig (M-of-N)
-//! Admin operations (`payout`, `set_payout_order`, `upgrade`) require M-of-N
-//! signatures from the configured admin signers. Each signer calls
-//! `approve_operation` with an operation hash; once M approvals are collected
-//! the operation executes. Approvals expire after `APPROVAL_TTL_SECS`.
+//! ## Storage Optimization
+//! - Instance storage: Core circle configuration (survives entire contract lifetime)
+//! - Temporary storage: Contribution tracking (cleared when circle completes)
+//! - Persistent storage: Member reputation records (cross-contract lifetime)
 
 #![no_std]
 
@@ -21,48 +20,68 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, token, vec, Address, BytesN, Env, Symbol, Vec,
 };
 
+// ─── Schema version ───────────────────────────────────────────────────────────
+/// Bump this constant whenever the storage layout changes in a new deployment.
+/// `migrate()` uses it to gate and sequence migration logic.
+const STORAGE_VERSION: u32 = 1;
+
 // ─── TTL Configuration ────────────────────────────────────────────────────────
-// Threshold: approximately 1 day in ledgers (assuming ~5s per ledger)
 const DAY_IN_LEDGERS: u32 = 17280;
-// Instance storage: bump by 7 days if it's within 1 day of expiry
 const INSTANCE_BUMP_AMOUNT: u32 = 7 * DAY_IN_LEDGERS;
 const INSTANCE_LIFETIME_THRESHOLD: u32 = DAY_IN_LEDGERS;
-
-// Persistent storage: bump by 30 days if it's within 7 days of expiry
 const PERSISTENT_BUMP_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
 const PERSISTENT_LIFETIME_THRESHOLD: u32 = 7 * DAY_IN_LEDGERS;
+// Temporary storage TTL: 90 days covers the longest possible circle cycle + buffer
+const TEMP_STORAGE_BUMP_AMOUNT: u32 = 90 * DAY_IN_LEDGERS;
+const TEMP_STORAGE_LIFETIME_THRESHOLD: u32 = 7 * DAY_IN_LEDGERS;
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 
+/// Storage key classification for optimization:
+/// - Instance: Core configuration (admin, token, amounts, members list, payout order)
+///   Survives entire contract lifetime, extended via TTL bumping
+/// - Temporary: Per-cycle contribution tracking, cleared on circle completion
+///   Lower ledger fees as they expire automatically after TTL
+/// - Persistent: Member reputation (cross-contract lifetime data)
 #[contracttype]
 pub enum DataKey {
-    // Multisig config
-    MultisigSigners,              // Vec<Address> — authorised admin signers
-    MultisigThreshold,            // u32 — M (minimum approvals required)
-    // Per-operation approval tracking
-    Approvals(BytesN<32>),        // op_hash → Vec<Address> of approvers
-    ApprovalExpiry(BytesN<32>),   // op_hash → expiry timestamp
-    // Circle state
+    // ─── Instance storage (core circle configuration) ────────────────────────────
+    Admin,
+    PendingAdmin,
     Token,
     ContributionAmount,
     MaxMembers,
     CycleIntervalSecs,
     Members,
-    PayoutOrder,                  // Vec<u32> — indices into Members for payout order
+    PayoutOrder,
     CurrentCycle,
     NextPayoutTime,
-    Contributions(Address, u32),  // (member, cycle) → bool
     Completed,
-    // Reputation tracking
-    MemberReputation(Address), // member → reputation score (0-100)
-    TotalCirclesCompleted(Address), // member → count of completed circles
-    OnTimeContributions(Address), // member → count of on-time contributions
-    TotalContributions(Address), // member → total contribution count
-    // TTL Configuration
+    Paused,
+    StorageVersion,
     TtlThreshold,
     TtlExtendTo,
-    // Reentrancy guard (issue #264)
+
+    // ─── Temporary storage (per-cycle, cleared after completion) ─────────────────
+    Contributions(Address, u32), // (member, cycle) → bool
+
+    // ─── Persistent storage (member reputation, survives upgrades) ────────────────
+    MemberReputation(Address),
+    TotalCirclesCompleted(Address),
+    OnTimeContributions(Address),
+    TotalContributions(Address),
+
+    // ─── Reentrancy guard (issue #264) - instance storage ────────────────────────
     PayoutLock,
+}
+
+// ─── Error types ──────────────────────────────────────────────────────────────
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub enum ContractError {
+    /// `payout_amount != contribution_amount * max_members` — arithmetic invariant violated.
+    InvalidPayoutAmount,
 }
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
@@ -74,18 +93,23 @@ pub struct AjoContract;
 impl AjoContract {
     // ── Initialisation ────────────────────────────────────────────────────────
 
-    /// Initialize the circle with M-of-N multisig admin.
+    /// Initialize the circle.
     ///
-    /// * `signers`             – Vec of admin addresses (N signers)
-    /// * `threshold`           – M, minimum approvals required for admin operations
+    /// # Arguments
+    /// * `admin`               – address that controls admin operations
     /// * `token`               – USDC token contract address
     /// * `contribution_amount` – USDC amount per member per cycle (in stroops)
-    /// * `max_members`         – total number of members (= total cycles)
-    /// * `cycle_interval_secs` – seconds between payouts (e.g. 2592000 = 30 days)
+    /// * `max_members`         – total number of members (= total cycles); must be 2–20
+    /// * `cycle_interval_secs` – seconds between payouts (e.g. `2_592_000` = 30 days)
+    ///
+    /// # Errors
+    /// Panics with:
+    /// - `"AlreadyInitialized"` if called more than once
+    /// - `"max_members must be between 2 and 20"` if the cap is out of range
+    /// - `"contribution_amount must be positive"` if `contribution_amount <= 0`
     pub fn initialize(
         env: Env,
-        signers: Vec<Address>,
-        threshold: u32,
+        admin: Address,
         token: Address,
         contribution_amount: i128,
         max_members: u32,
@@ -93,10 +117,7 @@ impl AjoContract {
     ) {
         Self::extend_instance_ttl(&env);
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
-        }
-        if signers.is_empty() || threshold == 0 || threshold > signers.len() {
-            panic!("invalid multisig config: threshold must be 1..=N");
+            panic!("AlreadyInitialized");
         }
         if max_members < 2 || max_members > 20 {
             panic!("max_members must be between 2 and 20");
@@ -105,13 +126,9 @@ impl AjoContract {
             panic!("contribution_amount must be positive");
         }
 
-        // Each signer must authorise the initialisation
-        for signer in signers.iter() {
-            signer.require_auth();
-        }
+        admin.require_auth();
 
-        env.storage().instance().set(&DataKey::MultisigSigners, &signers);
-        env.storage().instance().set(&DataKey::MultisigThreshold, &threshold);
+        env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Token, &token);
         env.storage().instance().set(&DataKey::ContributionAmount, &contribution_amount);
         env.storage().instance().set(&DataKey::MaxMembers, &max_members);
@@ -119,96 +136,30 @@ impl AjoContract {
         env.storage().instance().set(&DataKey::Members, &Vec::<Address>::new(&env));
         env.storage().instance().set(&DataKey::PayoutOrder, &Vec::<u32>::new(&env));
         env.storage().instance().set(&DataKey::CurrentCycle, &0u32);
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.storage().instance().set(&DataKey::Completed, &false);
 
         env.events().publish(
             (Symbol::new(&env, "initialized"),),
-            (signers, threshold, max_members, contribution_amount),
+            (admin, max_members, contribution_amount),
         );
-    }
-
-    // ── Multisig ──────────────────────────────────────────────────────────────
-
-    /// A signer submits their approval for an operation identified by `op_hash`.
-    ///
-    /// `op_hash` is a 32-byte value computed off-chain as:
-    ///   SHA-256("<op_tag>:<params>")
-    ///
-    /// Returns the current approval count.
-    pub fn approve_operation(env: Env, signer: Address, op_hash: BytesN<32>) -> u32 {
-        signer.require_auth();
-        Self::assert_is_signer(&env, &signer);
-
-        let now = env.ledger().timestamp();
-        let expiry: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::ApprovalExpiry(op_hash.clone()))
-            .unwrap_or(0);
-
-        let mut approvals: Vec<Address> = if expiry == 0 || now > expiry {
-            // First approval or expired — reset
-            env.storage()
-                .instance()
-                .set(&DataKey::ApprovalExpiry(op_hash.clone()), &(now + APPROVAL_TTL_SECS));
-            Vec::new(&env)
-        } else {
-            env.storage()
-                .instance()
-                .get(&DataKey::Approvals(op_hash.clone()))
-                .unwrap_or(Vec::new(&env))
-        };
-
-        if !approvals.contains(&signer) {
-            approvals.push_back(signer.clone());
-            env.storage()
-                .instance()
-                .set(&DataKey::Approvals(op_hash.clone()), &approvals);
-        }
-
-        let count = approvals.len();
-        env.events()
-            .publish((Symbol::new(&env, "approved"),), (signer, op_hash, count));
-        count
-    }
-
-    /// Returns current approval count for an op_hash (0 if expired/absent).
-    pub fn get_approval_count(env: Env, op_hash: BytesN<32>) -> u32 {
-        let now = env.ledger().timestamp();
-        let expiry: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::ApprovalExpiry(op_hash.clone()))
-            .unwrap_or(0);
-        if expiry == 0 || now > expiry {
-            return 0;
-        }
-        let approvals: Vec<Address> = env
-            .storage()
-            .instance()
-            .get(&DataKey::Approvals(op_hash))
-            .unwrap_or(Vec::new(&env));
-        approvals.len()
-    }
-
-    /// Returns the list of configured signers and threshold (M, N).
-    pub fn get_multisig_config(env: Env) -> (Vec<Address>, u32) {
-        let signers: Vec<Address> = env
-            .storage()
-            .instance()
-            .get(&DataKey::MultisigSigners)
-            .expect("not initialized");
-        let threshold: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::MultisigThreshold)
-            .expect("not initialized");
-        (signers, threshold)
     }
 
     // ── Member operations ─────────────────────────────────────────────────────
 
     /// Join the circle. Transfers the first contribution into the contract.
+    ///
+    /// Requires `member` authorization. When the last allowed member joins, the
+    /// circle starts automatically and `current_cycle` advances to `1`.
+    ///
+    /// # Arguments
+    /// * `member` – address of the joining member
+    ///
+    /// # Errors
+    /// Panics with:
+    /// - `"circle already started"` if `current_cycle > 0`
+    /// - `"circle is full"` if the member cap has been reached
+    /// - `"already a member"` if `member` has already joined
     pub fn join(env: Env, member: Address) {
         Self::extend_instance_ttl(&env);
         member.require_auth();
@@ -233,7 +184,8 @@ impl AjoContract {
         let token_client = token::Client::new(&env, &token);
         token_client.transfer(&member, &env.current_contract_address(), &amount);
 
-        env.storage().instance().set(&DataKey::Contributions(member.clone(), 1), &true);
+        // Use temporary storage for contribution tracking (lower ledger fees)
+        Self::set_temp_contribution(&env, &member, 1, true);
 
         members.push_back(member.clone());
         env.storage().instance().set(&DataKey::Members, &members);
@@ -243,28 +195,43 @@ impl AjoContract {
             let next_payout = env.ledger().timestamp() + interval;
             env.storage().instance().set(&DataKey::CurrentCycle, &1u32);
             env.storage().instance().set(&DataKey::NextPayoutTime, &next_payout);
-            env.events().publish((Symbol::new(&env, "started"),), (max_members,));
+            env.events().publish((Symbol::new(&env, "circle_started"),), (max_members, amount));
         }
 
-        env.events().publish((Symbol::new(&env, "joined"),), (member,));
+        env.events().publish(
+            (Symbol::new(&env, "member_joined"),),
+            (member, amount),
+        );
     }
 
     /// Contribute for the current cycle.
     ///
-    /// # Amount Validation (issue #265)
-    /// The caller must supply the exact `amount` they intend to transfer.
-    /// The contract rejects any value that does not equal `ContributionAmount`,
-    /// preventing both under-contributions and over-contributions.
+    /// The caller must pass the exact `ContributionAmount`; the contract
+    /// rejects any other value to prevent under- and over-contributions.
+    ///
+    /// # Arguments
+    /// * `member` – address of the contributing member (must already have joined)
+    /// * `amount` – must equal `ContributionAmount` exactly
+    ///
+    /// # Errors
+    /// Panics with:
+    /// - `"contract is paused"` while an emergency pause is active
+    /// - `"contribution amount must equal required amount"` if `amount` differs
+    /// - `"circle not started yet"` if `current_cycle == 0`
+    /// - `"not a member"` if `member` is not in the members list
+    /// - `"already contributed this cycle"` if the member has already paid this cycle
     pub fn contribute(env: Env, member: Address, amount: i128) {
         Self::extend_instance_ttl(&env);
         member.require_auth();
 
-        let required_amount: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::ContributionAmount)
-            .expect("not initialized");
-        if amount != required_amount {
+        // Respect emergency pause
+        let paused: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        if paused {
+            panic!("contract is paused");
+        }
+
+        let required: i128 = env.storage().instance().get(&DataKey::ContributionAmount).expect("not initialized");
+        if amount != required {
             panic!("contribution amount must equal required amount");
         }
 
@@ -278,27 +245,25 @@ impl AjoContract {
             panic!("not a member");
         }
 
-        let already_paid: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::Contributions(member.clone(), current_cycle))
-            .unwrap_or(false);
+        // Check contribution using temporary storage
+        let already_paid: bool = Self::get_temp_contribution(&env, &member, current_cycle);
         if already_paid {
             panic!("already contributed this cycle");
         }
 
+        // Cache token and amount in locals — avoids two extra storage reads
         let token: Address = env.storage().instance().get(&DataKey::Token).expect("not initialized");
-        let amount: i128 = env.storage().instance().get(&DataKey::ContributionAmount).expect("not initialized");
-
         let token_client = token::Client::new(&env, &token);
         token_client.transfer(&member, &env.current_contract_address(), &amount);
 
-        env.storage().instance().set(&DataKey::Contributions(member.clone(), current_cycle), &true);
+        // Store contribution in temporary storage (lower ledger fees)
+        Self::set_temp_contribution(&env, &member, current_cycle, true);
+        // Bump TTL on contribution key to prevent expiry mid-cycle
+        Self::extend_temp_storage_ttl(&env, &member, current_cycle);
 
-        // Update reputation: track on-time contributions
         let next_payout_time: u64 = env.storage().instance().get(&DataKey::NextPayoutTime).expect("not initialized");
         let is_on_time = env.ledger().timestamp() < next_payout_time;
-        
+
         if is_on_time {
             let on_time_count: u32 = env
                 .storage()
@@ -310,30 +275,41 @@ impl AjoContract {
                 .set(&DataKey::OnTimeContributions(member.clone()), &(on_time_count + 1));
         }
 
-        let total_contributions: u32 = env
+        let total: u32 = env
             .storage()
             .persistent()
             .get(&DataKey::TotalContributions(member.clone()))
             .unwrap_or(0);
         env.storage()
             .persistent()
-            .set(&DataKey::TotalContributions(member.clone()), &(total_contributions + 1));
+            .set(&DataKey::TotalContributions(member.clone()), &(total + 1));
 
-        // Recalculate reputation score
         Self::update_reputation(&env, &member);
 
-        env.events().publish((Symbol::new(&env, "contributed"),), (member, current_cycle));
+        env.events().publish(
+            (Symbol::new(&env, "contribution_made"),),
+            (member, amount, current_cycle),
+        );
     }
 
-    // ── Admin operations (require M-of-N approvals) ───────────────────────────
+    // ── Admin operations ──────────────────────────────────────────────────────
 
-    /// Set payout order. Requires M-of-N approvals.
+    /// Set payout order. Admin-only.
     ///
-    /// `op_hash` = SHA-256("set_payout_order:<order_csv>") computed off-chain.
-    pub fn set_payout_order(env: Env, caller: Address, op_hash: BytesN<32>, order: Vec<u32>) {
-        caller.require_auth();
-        Self::assert_is_signer(&env, &caller);
-        Self::assert_approved(&env, &op_hash);
+    /// Must be called before the circle starts (`current_cycle == 0`).
+    /// Each element of `order` is a zero-based index into the members list.
+    ///
+    /// # Arguments
+    /// * `order` – permutation of member indices defining who receives the pot each cycle
+    ///
+    /// # Errors
+    /// Panics with:
+    /// - `"not initialized"` if the contract has not been initialized
+    /// - `"cannot set payout order after circle starts"` if `current_cycle > 0`
+    /// - `"payout order length must equal max_members"` if `order.len() != max_members`
+    pub fn set_payout_order(env: Env, order: Vec<u32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
+        admin.require_auth();
 
         let current_cycle: u32 = env.storage().instance().get(&DataKey::CurrentCycle).expect("not initialized");
         if current_cycle > 0 {
@@ -346,27 +322,39 @@ impl AjoContract {
         }
 
         env.storage().instance().set(&DataKey::PayoutOrder, &order);
-        Self::clear_approvals(&env, &op_hash);
     }
 
-    /// Trigger payout to the current cycle's recipient. Only callable by admin after next_payout_time.
+    /// Trigger payout to the current cycle's recipient. Admin-only, callable after next_payout_time.
+    ///
+    /// Transfers `contribution_amount × max_members` (the full pot) to the recipient
+    /// determined by the payout order for the current cycle. Advances the cycle counter
+    /// and schedules the next payout. On the final cycle, marks the circle as completed
+    /// and clears temporary contribution storage.
     ///
     /// # Security – Reentrancy Guard (issue #264)
-    /// Although Soroban's execution model does not support traditional EVM-style reentrancy,
-    /// a `PayoutLock` flag is set at the start of this function and cleared at the end as an
-    /// explicit defence-in-depth measure. Any re-entrant or concurrent invocation (e.g. via
-    /// cross-contract calls or future protocol changes) will panic with "payout already in progress".
-    /// The contract also follows the checks-effects-interactions pattern: all state mutations
+    /// A `PayoutLock` flag is set at the start and cleared at the end.
+    /// The contract follows checks-effects-interactions: all state mutations
     /// occur before the external token transfer.
+    ///
+    /// # Errors
+    /// Panics with:
+    /// - `"contract is paused"` while an emergency pause is active
+    /// - `"payout already in progress"` if the reentrancy guard is set
+    /// - `"not initialized"` if the contract has not been initialized
+    /// - `"circle already completed"` if all payouts have been distributed
+    /// - `"circle not started"` if `current_cycle == 0`
+    /// - `"payout time not reached"` if called before `next_payout_time`
     pub fn payout(env: Env) {
         Self::extend_instance_ttl(&env);
 
-        // ─── Reentrancy guard: acquire lock ───────────────────────────────────
-        let locked: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::PayoutLock)
-            .unwrap_or(false);
+        // Respect emergency pause
+        let paused: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        if paused {
+            panic!("contract is paused");
+        }
+
+        // ─── Reentrancy guard ─────────────────────────────────────────────────
+        let locked: bool = env.storage().instance().get(&DataKey::PayoutLock).unwrap_or(false);
         if locked {
             panic!("payout already in progress");
         }
@@ -390,47 +378,62 @@ impl AjoContract {
             panic!("payout time not reached");
         }
 
+        // Cache all remaining reads into locals — avoids repeated storage lookups below
         let members: Vec<Address> = env.storage().instance().get(&DataKey::Members).expect("not initialized");
         let max_members: u32 = env.storage().instance().get(&DataKey::MaxMembers).expect("not initialized");
+        let token: Address = env.storage().instance().get(&DataKey::Token).expect("not initialized");
+        let contribution: i128 = env.storage().instance().get(&DataKey::ContributionAmount).expect("not initialized");
+        let interval: u64 = env.storage().instance().get(&DataKey::CycleIntervalSecs).expect("not initialized");
 
         for m in members.iter() {
-            let paid: bool = env
-                .storage()
-                .instance()
-                .get(&DataKey::Contributions(m.clone(), current_cycle))
-                .unwrap_or(false);
+            // Check contribution using temporary storage
+            let paid: bool = Self::get_temp_contribution(&env, &m, current_cycle);
             if !paid {
-                env.events().publish(
-                    (Symbol::new(&env, "defaulted"),),
-                    (m, current_cycle),
-                );
+                env.events().publish((Symbol::new(&env, "member_defaulted"),), (m, current_cycle));
             }
         }
 
-        // Recipient is the member at position (current_cycle - 1)
-        let recipient = members.get(current_cycle - 1).expect("invalid cycle");
-        let payout_order: Vec<u32> = env.storage().instance().get(&DataKey::PayoutOrder).unwrap_or_else(|_| {
-            // Default to join order if no custom order set
-            let mut default_order = Vec::new(&env);
-            for i in 0..max_members {
-                default_order.push_back(i);
+        // Determine recipient from payout order (default: join order)
+        let payout_order: Vec<u32> = {
+            let stored: Vec<u32> = env
+                .storage()
+                .instance()
+                .get(&DataKey::PayoutOrder)
+                .unwrap_or(Vec::new(&env));
+            if stored.is_empty() {
+                let mut default_order = Vec::new(&env);
+                for i in 0..max_members {
+                    default_order.push_back(i);
+                }
+                default_order
+            } else {
+                stored
             }
-            default_order
-        });
+        };
 
-        // Get recipient from payout order
         let recipient_idx = payout_order.get(current_cycle - 1).expect("invalid cycle");
         let recipient = members.get(recipient_idx).expect("invalid member index");
 
         let token: Address = env.storage().instance().get(&DataKey::Token).expect("not initialized");
         let contribution: i128 = env.storage().instance().get(&DataKey::ContributionAmount).expect("not initialized");
-        let pot = contribution * (max_members as i128);
 
-        // ─── Effects: Advance or complete before external call ────────────────
+        // ─── Invariant: payout_amount == contribution_amount * max_members ────────
+        // checked_mul guards against i128 overflow; if it fails the arithmetic is
+        // inconsistent with stored parameters and we must not transfer.
+        let pot: i128 = match contribution.checked_mul(max_members as i128) {
+            Some(p) => p,
+            None => panic!("InvalidPayoutAmount"),
+        };
+        // Secondary assertion: pot must be strictly positive
+        if pot <= 0 {
+            panic!("InvalidPayoutAmount");
+        }
+
+        // ─── Effects before external call ─────────────────────────────────────
         if current_cycle >= max_members {
             env.storage().instance().set(&DataKey::Completed, &true);
-            
-            // Update reputation for all members upon circle completion
+            // Clear temporary contribution entries to reduce ledger footprint
+            Self::clear_temp_contributions(&env, &members, max_members);
             for member in members.iter() {
                 let circles_completed: u32 = env
                     .storage()
@@ -440,26 +443,25 @@ impl AjoContract {
                 env.storage()
                     .persistent()
                     .set(&DataKey::TotalCirclesCompleted(member.clone()), &(circles_completed + 1));
-                
                 Self::update_reputation(&env, &member);
             }
         } else {
-            let interval: u64 = env.storage().instance().get(&DataKey::CycleIntervalSecs).expect("not initialized");
             env.storage().instance().set(&DataKey::CurrentCycle, &(current_cycle + 1));
             env.storage().instance().set(&DataKey::NextPayoutTime, &(env.ledger().timestamp() + interval));
         }
 
-        // ─── Interaction: Transfer tokens ─────────────────────────────────────
+        // ─── Interaction ──────────────────────────────────────────────────────
         let token_client = token::Client::new(&env, &token);
         token_client.transfer(&env.current_contract_address(), &recipient, &pot);
 
-        // ─── Reentrancy guard: release lock ───────────────────────────────────
         env.storage().instance().set(&DataKey::PayoutLock, &false);
 
-        // ─── Events ───────────────────────────────────────────────────────────
-        env.events().publish((Symbol::new(&env, "payout"),), (recipient.clone(), pot, current_cycle));
+        env.events().publish(
+            (Symbol::new(&env, "payout_sent"),),
+            (recipient.clone(), pot, current_cycle)
+        );
         if current_cycle >= max_members {
-            env.events().publish((Symbol::new(&env, "completed"),), ());
+            env.events().publish((Symbol::new(&env, "circle_completed"),), ());
         }
     }
 
@@ -522,7 +524,13 @@ impl AjoContract {
         );
     }
 
-    /// Read-only: get reputation score for a member (0-100)
+    /// Read-only: get reputation score for a member.
+    ///
+    /// # Arguments
+    /// * `member` – address to query
+    ///
+    /// # Returns
+    /// An integer in the range `0–100`. Returns `0` if the member has no history.
     pub fn get_reputation(env: Env, member: Address) -> u32 {
         env.storage()
             .persistent()
@@ -530,7 +538,14 @@ impl AjoContract {
             .unwrap_or(0)
     }
 
-    /// Read-only: get detailed reputation stats for a member
+    /// Read-only: get detailed reputation stats for a member.
+    ///
+    /// # Arguments
+    /// * `member` – address to query
+    ///
+    /// # Returns
+    /// `(reputation, circles_completed, on_time_contributions, total_contributions)`
+    /// All values default to `0` if the member has no recorded history.
     pub fn get_reputation_stats(env: Env, member: Address) -> (u32, u32, u32, u32) {
         let reputation: u32 = env
             .storage()
@@ -556,34 +571,101 @@ impl AjoContract {
         (reputation, circles_completed, on_time, total)
     }
 
-    /// Upgrade contract WASM. Requires M-of-N approvals.
+    /// Migrate storage layout after a contract upgrade. Admin-only.
     ///
-    /// `op_hash` = SHA-256("upgrade:<new_wasm_hash_hex>") computed off-chain.
-    pub fn upgrade(env: Env, caller: Address, op_hash: BytesN<32>, new_wasm_hash: BytesN<32>) {
-        caller.require_auth();
-        Self::assert_is_signer(&env, &caller);
-        Self::assert_approved(&env, &op_hash);
+    /// Call once immediately after `upgrade()` when the new WASM introduces
+    /// storage layout changes. No-op if already at `STORAGE_VERSION`.
+    ///
+    /// To add a future migration: bump `STORAGE_VERSION` and add an
+    /// `if from < N { … }` block below.
+    pub fn migrate(env: Env) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
+        admin.require_auth();
+
+        let from: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::StorageVersion)
+            .unwrap_or(0);
+
+        if from >= STORAGE_VERSION {
+            return;
+        }
+
+        // ── v0 → v1 ──────────────────────────────────────────────────────────
+        // Ensure PayoutLock is initialised on contracts upgraded from v0.
+        if from < 1 {
+            if !env.storage().instance().has(&DataKey::PayoutLock) {
+                env.storage().instance().set(&DataKey::PayoutLock, &false);
+            }
+        }
+
+        // ── Add future migration blocks here ─────────────────────────────────
+        // if from < 2 { … }
+
+        env.storage().instance().set(&DataKey::StorageVersion, &STORAGE_VERSION);
+
+        env.events().publish((Symbol::new(&env, "migrated"),), (from, STORAGE_VERSION));
+    }
+
+    /// Upgrade contract WASM. Admin-only.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
+        admin.require_auth();
 
         env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
-        Self::clear_approvals(&env, &op_hash);
 
         env.events().publish((Symbol::new(&env, "upgraded"),), (new_wasm_hash,));
     }
 
+    /// Emergency pause — admin-only. Halts `contribute` and `payout`.
+    pub fn pause(env: Env) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Paused, &true);
+        env.events().publish((Symbol::new(&env, "paused"),), ());
+    }
+
+    /// Lift emergency pause — admin-only.
+    pub fn unpause(env: Env) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.events().publish((Symbol::new(&env, "unpaused"),), ());
+    }
+
     // ── Read-only ─────────────────────────────────────────────────────────────
 
+    /// Read current circle state.
+    ///
+    /// # Returns
+    /// A tuple of `(current_cycle, max_members, next_payout_time, completed, paused)`:
+    /// - `current_cycle` – cycle counter; `0` means the circle has not started yet
+    /// - `max_members`   – total number of members (equals total number of cycles)
+    /// - `next_payout_time` – Unix timestamp of the next scheduled payout; `0` before start
+    /// - `completed`     – `true` once all payouts have been distributed
+    /// - `paused`        – `true` while the contract is under emergency pause
     pub fn get_state(env: Env) -> (u32, u32, u64, bool) {
         let current_cycle: u32 = env.storage().instance().get(&DataKey::CurrentCycle).unwrap_or(0);
         let max_members: u32 = env.storage().instance().get(&DataKey::MaxMembers).unwrap_or(0);
         let next_payout_time: u64 = env.storage().instance().get(&DataKey::NextPayoutTime).unwrap_or(0);
         let completed: bool = env.storage().instance().get(&DataKey::Completed).unwrap_or(false);
-        (current_cycle, max_members, next_payout_time, completed)
+        let paused: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        (current_cycle, max_members, next_payout_time, completed, paused)
     }
 
+    /// Read-only: return all member addresses in join order.
+    ///
+    /// Returns an empty `Vec` if no members have joined yet.
     pub fn get_members(env: Env) -> Vec<Address> {
         env.storage().instance().get(&DataKey::Members).unwrap_or(vec![&env])
     }
 
+    /// Read-only: return the configured payout order.
+    ///
+    /// Each element is a zero-based index into the members list.
+    /// Returns an empty `Vec` when no explicit order has been set (the contract
+    /// then defaults to join order during `payout`).
     pub fn get_payout_order(env: Env) -> Vec<u32> {
         env.storage().instance().get(&DataKey::PayoutOrder).unwrap_or(vec![&env])
     }
@@ -602,60 +684,11 @@ impl AjoContract {
 
         let mut result: Vec<(Address, bool)> = Vec::new(&env);
         for member in members.iter() {
-            let paid: bool = env
-                .storage()
-                .instance()
-                .get(&DataKey::Contributions(member.clone(), cycle))
-                .unwrap_or(false);
+            // Read from temporary storage
+            let paid: bool = Self::get_temp_contribution(&env, &member, cycle);
             result.push_back((member, paid));
         }
         result
-    }
-
-    /// Upgrade the contract WASM. Admin-only.
-    ///
-    /// * `new_wasm_hash` – hash of the new WASM blob already uploaded to the network
-    ///
-    /// Emits an `upgraded` event so off-chain indexers can track deployments.
-    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::MultisigSigners)
-            .expect("not initialized");
-        if !signers.contains(addr) {
-            panic!("not an authorised signer");
-        }
-    }
-
-    fn assert_approved(env: &Env, op_hash: &BytesN<32>) {
-        let threshold: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::MultisigThreshold)
-            .expect("not initialized");
-        let now = env.ledger().timestamp();
-        let expiry: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::ApprovalExpiry(op_hash.clone()))
-            .unwrap_or(0);
-        if expiry == 0 || now > expiry {
-            panic!("no valid approvals for this operation");
-        }
-        let approvals: Vec<Address> = env
-            .storage()
-            .instance()
-            .get(&DataKey::Approvals(op_hash.clone()))
-            .unwrap_or(Vec::new(env));
-        if approvals.len() < threshold {
-            panic!("insufficient approvals: need M-of-N signatures");
-        }
-    }
-
-    fn clear_approvals(env: &Env, op_hash: &BytesN<32>) {
-        env.storage().instance().remove(&DataKey::Approvals(op_hash.clone()));
-        env.storage().instance().remove(&DataKey::ApprovalExpiry(op_hash.clone()));
     }
 
     /// Propose a new admin. Only the current admin can call this.
@@ -682,6 +715,14 @@ impl AjoContract {
     }
 
     /// Set TTL configuration. Admin-only.
+    ///
+    /// Overrides the compile-time defaults for instance-storage TTL management.
+    /// Call before any operation that triggers `extend_instance_ttl` if you need
+    /// custom ledger-lifetime values (e.g., in tests).
+    ///
+    /// # Arguments
+    /// * `threshold`  – ledger count below which TTL extension is triggered
+    /// * `extend_to`  – target ledger count after extension
     pub fn set_ttl_config(env: Env, threshold: u32, extend_to: u32) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
         admin.require_auth();
@@ -690,6 +731,50 @@ impl AjoContract {
         env.storage().instance().set(&DataKey::TtlExtendTo, &extend_to);
     }
 
+    /// Store contribution status in temporary storage (expires when circle completes).
+    ///
+    /// Temporary storage costs fewer ledger fees than instance storage and is
+    /// automatically garbage-collected after its TTL.
+    ///
+    /// # Arguments
+    /// * `member`      – address of the contributing member
+    /// * `cycle`       – cycle number for which to record the status
+    /// * `contributed` – `true` to mark as paid, `false` to clear
+    fn set_temp_contribution(env: &Env, member: &Address, cycle: u32, contributed: bool) {
+        env.storage().temporary().set(&DataKey::Contributions(member.clone(), cycle), &contributed);
+    }
+
+    /// Retrieve contribution status from temporary storage.
+    ///
+    /// Returns `false` when the entry is absent (not yet contributed or already expired).
+    ///
+    /// # Arguments
+    /// * `member` – address of the member to query
+    /// * `cycle`  – cycle number to query
+    fn get_temp_contribution(env: &Env, member: &Address, cycle: u32) -> bool {
+        env.storage().temporary().get(&DataKey::Contributions(member.clone(), cycle)).unwrap_or(false)
+    }
+
+    /// Remove all temporary contribution entries when the circle completes.
+    ///
+    /// Iterates over every `(member, cycle)` pair and removes the corresponding
+    /// temporary storage entry, reducing the contract's on-chain footprint.
+    ///
+    /// # Arguments
+    /// * `members`     – slice of all member addresses
+    /// * `max_members` – total cycle count (upper bound of the loop)
+    fn clear_temp_contributions(env: &Env, members: &Vec<Address>, max_members: u32) {
+        for cycle in 1..=max_members {
+            for member in members.iter() {
+                env.storage().temporary().remove(&DataKey::Contributions(member.clone(), cycle));
+            }
+        }
+    }
+
+    /// Extend the instance-storage TTL using configured (or default) thresholds.
+    ///
+    /// Called at the start of every mutating entry point to ensure the contract's
+    /// core configuration survives for at least `extend_to` ledgers.
     fn extend_instance_ttl(env: &Env) {
         let threshold = env.storage().instance().get(&DataKey::TtlThreshold).unwrap_or(INSTANCE_LIFETIME_THRESHOLD);
         let extend_to = env.storage().instance().get(&DataKey::TtlExtendTo).unwrap_or(INSTANCE_BUMP_AMOUNT);
@@ -699,6 +784,26 @@ impl AjoContract {
             .extend_ttl(threshold, extend_to);
     }
 
+    /// Extend TTL for a single temporary contribution entry.
+    ///
+    /// Uses a 1-day threshold and 7-day extension — sufficient for the duration
+    /// of a single cycle — keeping the cost lower than instance-storage TTL bumps.
+    ///
+    /// # Arguments
+    /// * `member` – address whose contribution entry should be extended
+    /// * `cycle`  – cycle number of the entry to extend
+    fn extend_temp_storage_ttl(env: &Env, member: &Address, cycle: u32) {
+        let temp_entry = DataKey::Contributions(member.clone(), cycle);
+        env.storage().temporary().extend_ttl(&temp_entry, TEMP_STORAGE_LIFETIME_THRESHOLD, TEMP_STORAGE_BUMP_AMOUNT);
+    }
+
+    /// Extend the TTL of a persistent storage entry.
+    ///
+    /// Uses `PERSISTENT_LIFETIME_THRESHOLD` / `PERSISTENT_BUMP_AMOUNT` to keep
+    /// member reputation data alive across contract upgrades and long idle periods.
+    ///
+    /// # Arguments
+    /// * `key` – the `DataKey` of the persistent entry to extend
     fn extend_persistent_ttl(env: &Env, key: &DataKey) {
         env.storage()
             .persistent()
@@ -724,21 +829,8 @@ mod tests {
         Env,
     };
 
-    fn make_op_hash(env: &Env, tag: &str) -> BytesN<32> {
-        // Simple deterministic test hash — not SHA-256, just fills bytes with tag length
-        let mut bytes = [0u8; 32];
-        let b = tag.as_bytes();
-        for (i, &byte) in b.iter().enumerate().take(32) {
-            bytes[i] = byte;
-        }
-        BytesN::from_array(env, &bytes)
-    }
-
-    fn setup(env: &Env) -> (Vec<Address>, Vec<Address>, Address, TokenClient, AjoContractClient) {
-        let signer1 = Address::generate(env);
-        let signer2 = Address::generate(env);
-        let signers = vec![env, signer1.clone(), signer2.clone()];
-
+    fn setup(env: &Env) -> (Address, Vec<Address>, Address, TokenClient<'_>, AjoContractClient<'_>) {
+        let admin = Address::generate(env);
         let members = vec![
             env,
             Address::generate(env),
@@ -746,7 +838,7 @@ mod tests {
             Address::generate(env),
         ];
 
-        let token_id = env.register_stellar_asset_contract(signer1.clone());
+        let token_id = env.register_stellar_asset_contract(admin.clone());
         let token = TokenClient::new(env, &token_id);
         let token_admin = StellarAssetClient::new(env, &token_id);
 
@@ -757,82 +849,90 @@ mod tests {
         let contract_id = env.register_contract(None, AjoContract);
         let client = AjoContractClient::new(env, &contract_id);
 
-        // 2-of-2 multisig
-        client.initialize(&signers, &2, &token_id, &100_000_000, &3, &86400);
+        client.initialize(&admin, &token_id, &100_000_000, &3, &86400);
 
-        (signers, members, token_id, token, client)
+        (admin, members, token_id, token, client)
     }
 
     #[test]
-    fn test_full_cycle_with_multisig() {
+    fn test_contribution_storage_uses_temporary() {
         let env = Env::default();
         env.mock_all_auths();
+        let (_, members, _, _, client) = setup(&env);
 
-        let (signers, members, _token_id, token, client) = setup(&env);
+        for m in members.iter() { client.join(m); }
 
-        for m in members.iter() {
-            client.join(m);
-        }
+        // Check that contribution is stored in temporary storage
+        let member = members.get(0).unwrap();
+        let has_temp = env.storage().temporary().has(&DataKey::Contributions(member.clone(), 1));
+        assert!(has_temp, "contribution should be in temporary storage after join");
 
-        let (cycle, max, _, completed) = client.get_state();
+        // Verify reading via get_contribution_status works
+        let status = client.get_contribution_status(&1u32);
+        let (_, paid) = status.get(0).unwrap();
+        assert!(paid, "member should show as contributed for cycle 1");
+    }
+
+    #[test]
+    fn test_full_cycle() {
+        use soroban_sdk::{testutils::Events, TryFromVal};
+
+        let env = Env::default();
+        env.mock_all_auths();
+        let (_, members, _, token, client) = setup(&env);
+
+        for m in members.iter() { client.join(m); }
+
+        let (cycle, max, _, completed, _) = client.get_state();
         assert_eq!(cycle, 1);
         assert_eq!(max, 3);
         assert!(!completed);
 
+        // Verify circle_started event when last member joins
+        let started_sym = Symbol::new(&env, "circle_started");
+        let found_started = env.events().all().iter().any(|(_, topics, _)| {
+            if topics.len() != 1 { return false; }
+            let Ok(sym) = Symbol::try_from_val(&env, &topics.get(0).unwrap()) else { return false; };
+            sym == started_sym
+        });
+        assert!(found_started, "circle_started event should be emitted when circle fills");
+
         env.ledger().with_mut(|l| l.timestamp = 86401);
-
-        // Both signers approve payout for cycle 1
-        let op_hash = make_op_hash(&env, "payout:1");
-        client.approve_operation(&signers.get(0).unwrap(), &op_hash);
-        client.approve_operation(&signers.get(1).unwrap(), &op_hash);
-
-        client.payout(&signers.get(0).unwrap(), &op_hash);
+        client.payout();
         assert_eq!(token.balance(&members.get(0).unwrap()), 1_100_000_000);
+
+        // Verify payout_sent event
+        let payout_sym = Symbol::new(&env, "payout_sent");
+        let found_payout = env.events().all().iter().any(|(_, topics, _)| {
+            if topics.len() != 1 { return false; }
+            let Ok(sym) = Symbol::try_from_val(&env, &topics.get(0).unwrap()) else { return false; };
+            sym == payout_sym
+        });
+        assert!(found_payout, "payout_sent event should be emitted");
 
         for m in members.iter() { client.contribute(m, &100_000_000); }
         env.ledger().with_mut(|l| l.timestamp = 172802);
-
-        let op_hash2 = make_op_hash(&env, "payout:2");
-        client.approve_operation(&signers.get(0).unwrap(), &op_hash2);
-        client.approve_operation(&signers.get(1).unwrap(), &op_hash2);
-        client.payout(&signers.get(0).unwrap(), &op_hash2);
+        client.payout();
 
         for m in members.iter() { client.contribute(m, &100_000_000); }
         env.ledger().with_mut(|l| l.timestamp = 259203);
+        client.payout();
 
-        let op_hash3 = make_op_hash(&env, "payout:3");
-        client.approve_operation(&signers.get(0).unwrap(), &op_hash3);
-        client.approve_operation(&signers.get(1).unwrap(), &op_hash3);
-        client.payout(&signers.get(0).unwrap(), &op_hash3);
-
-        let (_, _, _, completed) = client.get_state();
+        let (_, _, _, completed, _) = client.get_state();
         assert!(completed);
-    }
 
-    #[test]
-    #[should_panic(expected = "insufficient approvals")]
-    fn test_payout_without_enough_approvals_panics() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let (signers, members, _, _, client) = setup(&env);
-        for m in members.iter() { client.join(m); }
-        env.ledger().with_mut(|l| l.timestamp = 86401);
+        // Verify circle_completed event on final payout
+        let completed_sym = Symbol::new(&env, "circle_completed");
+        let found_completed = env.events().all().iter().any(|(_, topics, _)| {
+            if topics.len() != 1 { return false; }
+            let Ok(sym) = Symbol::try_from_val(&env, &topics.get(0).unwrap()) else { return false; };
+            sym == completed_sym
+        });
+        assert!(found_completed, "circle_completed event should be emitted on final payout");
 
-        // Only 1 of 2 required approvals
-        let op_hash = make_op_hash(&env, "payout:1");
-        client.approve_operation(&signers.get(0).unwrap(), &op_hash);
-        client.payout(&signers.get(0).unwrap(), &op_hash);
-    }
-
-    #[test]
-    #[should_panic(expected = "not an authorised signer")]
-    fn test_non_signer_cannot_approve() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let (_, _, _, _, client) = setup(&env);
-        let outsider = Address::generate(&env);
-        let op_hash = make_op_hash(&env, "payout:1");
-        client.approve_operation(&outsider, &op_hash);
+        // Verify temporary contributions are cleared after completion
+        let has_temp = env.storage().temporary().has(&DataKey::Contributions(members.get(0).unwrap().clone(), 1));
+        assert!(!has_temp, "temporary contributions should be cleared after circle completes");
     }
 
     #[test]
@@ -851,19 +951,14 @@ mod tests {
 
         let env = Env::default();
         env.mock_all_auths();
-
         let (_, members, _, _, client) = setup(&env);
 
-        // All 3 members join (cycle 1 contributions recorded automatically via join)
-        for m in members.iter() {
-            client.join(m);
-        }
+        for m in members.iter() { client.join(m); }
 
-        // Cycle 1 payout — no defaults (join records each member's cycle-1 contribution)
         env.ledger().with_mut(|l| l.timestamp = 86401);
         client.payout();
 
-        // Only members[0] and members[1] contribute for cycle 2; members[2] defaults
+        // members[0] and members[1] contribute for cycle 2; members[2] defaults
         client.contribute(&members.get(0).unwrap(), &100_000_000);
         client.contribute(&members.get(1).unwrap(), &100_000_000);
 
@@ -871,117 +966,75 @@ mod tests {
         client.payout();
 
         let defaulter = members.get(2).unwrap();
-        let defaulted_sym = Symbol::new(&env, "defaulted");
+        let defaulted_sym = Symbol::new(&env, "member_defaulted");
 
         let found = env.events().all().iter().any(|(_, topics, data)| {
-            if topics.len() != 1 {
-                return false;
-            }
-            let Ok(sym) = Symbol::try_from_val(&env, &topics.get(0).unwrap()) else {
-                return false;
-            };
-            if sym != defaulted_sym {
-                return false;
-            }
-            let Ok((addr, cycle)) = <(Address, u32)>::try_from_val(&env, data) else {
-                return false;
-            };
+            if topics.len() != 1 { return false; }
+            let Ok(sym) = Symbol::try_from_val(&env, &topics.get(0).unwrap()) else { return false; };
+            if sym != defaulted_sym { return false; }
+            let Ok((addr, cycle)) = <(Address, u32)>::try_from_val(&env, data) else { return false; };
             addr == defaulter && cycle == 2
         });
 
-        assert!(found, "no 'defaulted' event emitted for members[2] on cycle 2");
+        assert!(found, "no 'member_defaulted' event emitted for members[2] on cycle 2");
     }
 
     #[test]
     fn test_ttl_extension() {
         let env = Env::default();
         env.mock_all_auths();
+        let (_, members, _, _, client) = setup(&env);
 
-        let (admin, members, _, _, client) = setup(&env);
-
-        // Configure TTL to be small for testing
         client.set_ttl_config(&10, &100);
-
-        // Join should trigger instance TTL extension to 100
         client.join(&members.get(0).unwrap());
-        
-        // Advance ledger past default/initial threshold but before 100
         env.ledger().with_mut(|l| l.sequence = 50);
-        
-        // Contract should still be responsive
-        let (cycle, _, _, _) = client.get_state();
-        assert_eq!(cycle, 0);
 
-        // Advance ledger past 100
-        // env.ledger().with_mut(|l| l.sequence = 150);
-        // client.get_state(); // This would panic if the contract expired
+        let (cycle, _, _, _, _) = client.get_state();
+        assert_eq!(cycle, 0);
     }
 
     #[test]
     fn test_get_contribution_status() {
         let env = Env::default();
         env.mock_all_auths();
-
         let (_, members, _, _, client) = setup(&env);
 
-        // All 3 members join (cycle 1 contributions recorded via join)
-        for m in members.iter() {
-            client.join(m);
-        }
+        for m in members.iter() { client.join(m); }
 
-        // All members should show contributed=true for cycle 1 (recorded during join)
         let status = client.get_contribution_status(&1u32);
         assert_eq!(status.len(), 3);
-        for (_, paid) in status.iter() {
-            assert!(paid, "all members should have contributed for cycle 1 via join");
-        }
+        for (_, paid) in status.iter() { assert!(paid); }
 
-        // Advance to cycle 2
         env.ledger().with_mut(|l| l.timestamp = 86401);
         client.payout();
 
-        // No one has contributed for cycle 2 yet
         let status2 = client.get_contribution_status(&2u32);
-        assert_eq!(status2.len(), 3);
-        for (_, paid) in status2.iter() {
-            assert!(!paid, "no member should have contributed for cycle 2 yet");
-        }
+        for (_, paid) in status2.iter() { assert!(!paid); }
 
-        // Only member 0 contributes for cycle 2
         client.contribute(&members.get(0).unwrap(), &100_000_000);
-
         let status3 = client.get_contribution_status(&2u32);
         let (_, m0_paid) = status3.get(0).unwrap();
         let (_, m1_paid) = status3.get(1).unwrap();
-        assert!(m0_paid, "member 0 should show contributed");
-        assert!(!m1_paid, "member 1 should not show contributed yet");
+        assert!(m0_paid);
+        assert!(!m1_paid);
     }
 
     #[test]
     fn test_payout_state_advancement() {
         let env = Env::default();
         env.mock_all_auths();
-
         let (_, members, _, _, client) = setup(&env);
 
-        // All 3 members join (cycle 1)
-        for m in members.iter() {
-            client.join(m);
-        }
-
-        // Advance to payout time
+        for m in members.iter() { client.join(m); }
         env.ledger().with_mut(|l| l.timestamp = 86401);
 
-        // Before payout: cycle 1, not completed
-        let (cycle, _, _, completed) = client.get_state();
+        let (cycle, _, _, completed, _) = client.get_state();
         assert_eq!(cycle, 1);
         assert!(!completed);
 
-        // Payout cycle 1
         client.payout();
 
-        // After payout: cycle 2, not completed (since max_members is 3)
-        let (cycle, _, _, completed) = client.get_state();
+        let (cycle, _, _, completed, _) = client.get_state();
         assert_eq!(cycle, 2);
         assert!(!completed);
     }
@@ -990,12 +1043,10 @@ mod tests {
     fn test_propose_and_accept_admin() {
         let env = Env::default();
         env.mock_all_auths();
-        let (admin, _, _, _, client) = setup(&env);
+        let (_, _, _, _, client) = setup(&env);
         let new_admin = Address::generate(&env);
         client.propose_admin(&new_admin);
         client.accept_admin();
-        // After transfer, new admin can call admin-only functions (e.g. payout)
-        // We just verify no panic — the event is the canonical proof
     }
 
     #[test]

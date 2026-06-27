@@ -9,12 +9,32 @@ interface CircleCardProps {
   circle: Circle;
   members: Member[];
   showJoin?: boolean;
+  loading?: boolean;
 }
 
-export function CircleCard({ circle, members, showJoin = false }: CircleCardProps) {
+export function CircleCard({ circle, members, showJoin = false, loading = false }: CircleCardProps) {
   const currentMemberCount = members.length > 0 ? members.length : (circle.memberCount ?? 0);
   const spotsLeft = circle.maxMembers - currentMemberCount;
   const currencySymbol = getCurrencySymbol(circle.contributionCurrency as SupportedCurrency);
+
+  if (loading) {
+    return (
+      <article className={styles.card} role="status" aria-busy="true" aria-live="polite">
+        <div className={styles.header}>
+          <div className="skeleton" style={{ width: "55%", height: 18, borderRadius: "var(--radius-sm)" }} />
+          <div className="skeleton" style={{ width: 60, height: 22, borderRadius: "var(--radius-full)" }} />
+        </div>
+        <div className="skeleton" style={{ width: "40%", height: 28, borderRadius: "var(--radius-sm)" }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+          <div className="skeleton" style={{ width: "50%", height: 14, borderRadius: "var(--radius-sm)" }} />
+        </div>
+        <div className={styles.progress}>
+          <div className="skeleton" style={{ width: "60%", height: "100%", borderRadius: "var(--radius-full)" }} />
+        </div>
+        <div className="skeleton" style={{ width: "100%", height: 32, borderRadius: "var(--radius-md)" }} />
+      </article>
+    );
+  }
 
   return (
     <article className={styles.card}>
@@ -22,6 +42,13 @@ export function CircleCard({ circle, members, showJoin = false }: CircleCardProp
         <h3 className={styles.name}>{circle.name}</h3>
         <CircleStatusBadge status={circle.status} />
       </div>
+      {(circle as Circle & { category?: string }).category && (
+        <span className={styles.category}>{(circle as Circle & { category?: string }).category}</span>
+      )}
+
+      {circle.description && (
+        <p className={styles.description}>{circle.description}</p>
+      )}
 
       <div className={styles.amount}>
         {currencySymbol}

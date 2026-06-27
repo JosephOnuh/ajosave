@@ -4,7 +4,8 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
   pgm.createTable("circle_waitlist", {
     id: { type: "uuid", primaryKey: true, default: pgm.func("gen_random_uuid()") },
     circle_id: { type: "uuid", notNull: true, references: "circles(id)", onDelete: "CASCADE" },
-    user_id: { type: "uuid", notNull: true, references: "users(id)", onDelete: "CASCADE" },
+    user_id: { type: "varchar(255)", notNull: true, references: "users(id)", onDelete: "CASCADE" },
+
     joined_at: { type: "timestamp", notNull: true, default: pgm.func("NOW()") },
   });
   pgm.addConstraint("circle_waitlist", "unique_circle_user", {

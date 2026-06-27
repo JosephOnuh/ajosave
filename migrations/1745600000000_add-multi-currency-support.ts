@@ -6,7 +6,7 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     contribution_currency: {
       type: "varchar(3)",
       notNull: true,
-      default: "'NGN'",
+      default: "NGN",
       check: "contribution_currency IN ('NGN','GBP','USD','EUR')",
     },
   });
@@ -19,10 +19,11 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
     notification_preference: {
       type: "varchar(10)",
       notNull: true,
-      default: "'sms'",
+      default: "sms",
       check: "notification_preference IN ('sms','email','both')",
     },
   });
+
 }
 
 export async function down(pgm: MigrationBuilder): Promise<void> {
