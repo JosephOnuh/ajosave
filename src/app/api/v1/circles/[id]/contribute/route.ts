@@ -14,7 +14,7 @@ const bodySchema = z.object({
   partialAmountFiat: z.number().positive().optional(),
 });
 
-export const POST = withErrorHandler(withSanitizedBody(async (req: NextRequest, ctx: unknown) => {
+export const POST = withRateLimit(withIdempotency(withErrorHandler(async (req: NextRequest, ctx: unknown) => {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json<ApiResponse<never>>(

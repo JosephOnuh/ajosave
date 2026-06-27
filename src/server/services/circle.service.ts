@@ -1,3 +1,4 @@
+// .
 import { query, transaction } from "@/lib/db";
 import { randomUUID } from "crypto";
 import type { Circle, Member, CircleStatus, CycleFrequency } from "@/types";
@@ -80,6 +81,7 @@ const CIRCLE_SELECT = `
 const MEMBER_SELECT = `
   m.id, m.circle_id as "circleId", m.user_id as "userId",
   u.display_name as "displayName",
+  u.stellar_public_key as "stellarPublicKey",
   m.position, m.status, m.has_received_payout as "hasReceivedPayout",
   m.joined_at as "joinedAt", m.reviewed_at as "reviewedAt"
 `;
@@ -540,8 +542,8 @@ export async function cancelCircle(
        WHERE id = $1
        RETURNING id, name, creator_id as "creatorId",
                  contribution_usdc as "contributionUsdc",
-                 contribution_ngn as "contributionFiat",
-                 'NGN' as "contributionCurrency",
+                 contribution_fiat as "contributionFiat",
+                 contribution_currency as "contributionCurrency",
                  max_members as "maxMembers",
                  cycle_frequency as "cycleFrequency",
                  payout_method as "payoutMethod",
@@ -809,3 +811,4 @@ export async function deleteCircle(circleId: string, requesterId: string, isAdmi
   );
   return updatedRows[0];
 }
+
