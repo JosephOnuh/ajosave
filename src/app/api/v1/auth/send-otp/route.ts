@@ -94,9 +94,9 @@ export const POST = withRateLimit(
 
   const otp = await sendOtp(phone);
   
-  // Store OTP in Redis with 10-minute expiry
+  // Store OTP in Redis with 5-minute expiry (max allowed per #488)
   const redis = await getRedis();
-  await redis.set(`otp:${phone}`, otp, { EX: 600 });
+  await redis.set(`otp:${phone}`, otp, { EX: 300 });
 
   if (process.env.NODE_ENV === "development") console.warn(`[DEV] OTP for ${phone}: ${otp}`);
   
