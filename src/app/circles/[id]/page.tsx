@@ -8,6 +8,7 @@ import { getContributionsByCircle } from "@/server/services/contribution.service
 import { CircleStatusBadge } from "@/components/ui/CircleStatusBadge";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { MemberPayoutList } from "@/components/circle/MemberPayoutList";
+import { MemberRoster } from "@/components/circle/MemberRoster";
 import { CircleActions } from "@/components/circle/CircleActions";
 import { PayoutCountdown } from "@/components/circle/PayoutCountdown";
 import { PayoutHistory } from "@/components/circle/PayoutHistory";
@@ -189,6 +190,14 @@ export default async function CircleDetailPage({ params }: Props) {
           </div>
 
           <MemberPayoutList circle={circle} initialMembers={members} isCreator={isCreator} currentUserId={userId} />
+
+          <div className="card" style={{ gridColumn: "1 / -1" }}>
+            <MemberRoster
+              members={members}
+              currentCycle={circle.currentCycle}
+              contributions={contributions.data}
+            />
+          </div>
         </div>
 
         {isAdmin && (
