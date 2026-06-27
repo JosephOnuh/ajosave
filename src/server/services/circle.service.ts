@@ -80,6 +80,7 @@ const CIRCLE_SELECT = `
 const MEMBER_SELECT = `
   m.id, m.circle_id as "circleId", m.user_id as "userId",
   u.display_name as "displayName",
+  u.stellar_public_key as "stellarPublicKey",
   m.position, m.status, m.has_received_payout as "hasReceivedPayout",
   m.joined_at as "joinedAt", m.reviewed_at as "reviewedAt"
 `;
