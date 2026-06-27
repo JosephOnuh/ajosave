@@ -1,4 +1,5 @@
 import { query } from "@/lib/db";
+import { usdcToStroops, stroopsToUsdc } from "@/lib/currency";
 import {
   notifyPayoutReminder,
   notifyMissedContribution,
@@ -36,15 +37,12 @@ export async function sendPayoutReminders(): Promise<void> {
       const recipient = members[0];
       if (!recipient) continue;
 
-      const totalPot = (
-        parseFloat(circle.contributionUsdc) *
-          (
-            await query<Member>(
-              "SELECT COUNT(*) as count FROM members WHERE circle_id = $1 AND status = 'active'",
-              [circle.id]
-            )
-          ).rows[0]?.count || 0
-      ).toFixed(7);
+      const { rows: countRows } = await query<{ count: string }>(
+        "SELECT COUNT(*) as count FROM members WHERE circle_id = $1 AND status = 'active'",
+        [circle.id]
+      );
+      const activeCount = BigInt(countRows[0]?.count ?? "0");
+      const totalPot = stroopsToUsdc(usdcToStroops(circle.contributionUsdc) * activeCount);
 
       // Send reminder to recipient
       await notifyPayoutReminder(recipient.userId, circle.name, totalPot, 24);

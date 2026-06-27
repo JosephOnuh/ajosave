@@ -23,6 +23,25 @@ export function withAuth(handler: Handler): Handler {
   };
 }
 
+const ADMIN_ROLE_CACHE_TTL_S = 60;
+
+async function getDbRole(userId: string): Promise<string | null> {
+  const redis = await getRedis();
+  const cacheKey = `admin:role:${userId}`;
+
+  const cached = await redis.get(cacheKey);
+  if (cached !== null) return cached;
+
+  const { query: dbQuery } = await import("@/lib/db");
+  const { rows } = await dbQuery<{ role: string }>(
+    "SELECT role FROM users WHERE id = $1",
+    [userId]
+  );
+  const role = rows[0]?.role ?? "";
+  await redis.set(cacheKey, role, { EX: ADMIN_ROLE_CACHE_TTL_S });
+  return role;
+}
+
 export function withAdminAuth(handler: Handler): Handler {
   return async (req, ctx) => {
     const session = await getServerSession(authOptions);
@@ -32,13 +51,23 @@ export function withAdminAuth(handler: Handler): Handler {
         { status: 401 }
       );
     }
-    const role = (session.user as { role?: string }).role;
-    if (role !== "admin") {
+
+    const userId = (session.user as { id?: string }).id;
+    if (!userId) {
       return NextResponse.json<ApiError>(
         { success: false, error: "Forbidden", code: "FORBIDDEN" },
         { status: 403 }
       );
     }
+
+    const dbRole = await getDbRole(userId);
+    if (dbRole !== "admin") {
+      return NextResponse.json<ApiError>(
+        { success: false, error: "Forbidden", code: "FORBIDDEN" },
+        { status: 403 }
+      );
+    }
+
     return handler(req, ctx);
   };
 }

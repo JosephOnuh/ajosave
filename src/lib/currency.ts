@@ -95,3 +95,28 @@ export function formatCurrency(amount: number, currency: SupportedCurrency): str
 export function isSupportedCurrency(currency: string): currency is SupportedCurrency {
   return ["NGN", "GBP", "USD", "EUR"].includes(currency);
 }
+
+// USDC uses 7 decimal places on Stellar (1 USDC = 10,000,000 stroops)
+const STROOPS_PER_USDC = 10_000_000n;
+
+/**
+ * Convert a USDC string amount to integer stroops (BigInt).
+ * Avoids all floating-point arithmetic on financial amounts.
+ * @param usdc - USDC string with up to 7 decimal places (e.g. "10.0000000")
+ * @returns stroops as BigInt
+ */
+export function usdcToStroops(usdc: string): bigint {
+  const [whole = "0", frac = ""] = usdc.split(".");
+  return BigInt(whole) * STROOPS_PER_USDC + BigInt(frac.padEnd(7, "0").slice(0, 7));
+}
+
+/**
+ * Convert integer stroops (BigInt) to a USDC string with 7 decimal places.
+ * @param stroops - amount in stroops
+ * @returns USDC string (e.g. "30.0000000")
+ */
+export function stroopsToUsdc(stroops: bigint): string {
+  const whole = stroops / STROOPS_PER_USDC;
+  const frac = stroops % STROOPS_PER_USDC;
+  return `${whole}.${String(frac).padStart(7, "0")}`;
+}

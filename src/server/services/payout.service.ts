@@ -2,6 +2,7 @@ import { query, transaction } from "@/lib/db";
 import { sendUsdcPayment, validateStellarRecipient } from "@/lib/stellar";
 import { invokeContractPayout } from "@/lib/soroban";
 import { getCircleById, getMembersByCircle, updateCircleStatus } from "./circle.service";
+import { usdcToStroops, stroopsToUsdc } from "@/lib/currency";
 import { withPayoutLock, PayoutLockError } from "./payout-lock";
 import { notifyPayoutProcessed, notifyCircleCompleted } from "./notification.service";
 import type { Payout } from "@/types";
@@ -31,9 +32,9 @@ export async function processCyclePayout(
     const circleMembers = await getMembersByCircle(circleId);
     // Only count active members (exclude defaulted) for the pot
     const activeMembers = circleMembers.filter((m) => m.status === "active");
-    const totalPot = (
-      parseFloat(circle.contributionUsdc) * activeMembers.length
-    ).toFixed(7);
+    const totalPot = stroopsToUsdc(
+      usdcToStroops(circle.contributionUsdc) * BigInt(activeMembers.length)
+    );
 
     // Guard: reject if the current cycle's recipient already received a payout
     const recipientMemberForGuard = circleMembers[circle.currentCycle - 1];
