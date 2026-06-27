@@ -26,6 +26,10 @@ export function CircleCard({ circle, members, showJoin = false }: CircleCardProp
         <span className={styles.category}>{(circle as Circle & { category?: string }).category}</span>
       )}
 
+      {circle.description && (
+        <p className={styles.description}>{circle.description}</p>
+      )}
+
       <div className={styles.amount}>
         {currencySymbol}
         {circle.contributionFiat.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}

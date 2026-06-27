@@ -14,6 +14,7 @@ export const CIRCLE_TEMPLATES: CircleTemplate[] = [
     description: "₦20,000 · 10 members · Monthly",
     values: {
       name: "Family Monthly Ajo",
+      description: "A monthly savings circle for family members to contribute and support each other.",
       contributionAmount: 20000,
       contributionCurrency: "NGN",
       maxMembers: 10,
@@ -29,6 +30,7 @@ export const CIRCLE_TEMPLATES: CircleTemplate[] = [
     description: "₦5,000 · 5 members · Weekly",
     values: {
       name: "Friends Weekly Ajo",
+      description: "A friendly weekly savings circle to build financial discipline together.",
       contributionAmount: 5000,
       contributionCurrency: "NGN",
       maxMembers: 5,
@@ -44,6 +46,7 @@ export const CIRCLE_TEMPLATES: CircleTemplate[] = [
     description: "£100 · 8 members · Monthly",
     values: {
       name: "Diaspora Monthly Ajo",
+      description: "A monthly savings circle for friends and family in the diaspora.",
       contributionAmount: 100,
       contributionCurrency: "GBP",
       maxMembers: 8,
@@ -59,6 +62,7 @@ export const CIRCLE_TEMPLATES: CircleTemplate[] = [
     description: "₦10,000 · 4 members · Bi-weekly",
     values: {
       name: "Small Group Ajo",
+      description: "A small, intimate bi-weekly savings circle.",
       contributionAmount: 10000,
       contributionCurrency: "NGN",
       maxMembers: 4,
