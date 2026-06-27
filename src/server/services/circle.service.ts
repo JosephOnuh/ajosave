@@ -540,8 +540,8 @@ export async function cancelCircle(
        WHERE id = $1
        RETURNING id, name, creator_id as "creatorId",
                  contribution_usdc as "contributionUsdc",
-                 contribution_ngn as "contributionFiat",
-                 'NGN' as "contributionCurrency",
+                 contribution_fiat as "contributionFiat",
+                 contribution_currency as "contributionCurrency",
                  max_members as "maxMembers",
                  cycle_frequency as "cycleFrequency",
                  payout_method as "payoutMethod",

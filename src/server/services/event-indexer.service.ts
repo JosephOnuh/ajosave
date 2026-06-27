@@ -138,6 +138,9 @@ async function reactToEvent(event: ContractEvent): Promise<void> {
 
   try {
     switch (topic) {
+      case "member_joined":
+        await onMemberJoined(val);
+        break;
       case "contribution_made":
         await onContributionMade(val, txHash);
         break;
@@ -150,13 +153,28 @@ async function reactToEvent(event: ContractEvent): Promise<void> {
       case "circle_completed":
         await onCircleCompleted(val);
         break;
-      // member_joined — stored for audit; no extra action needed
     }
     await markProcessed(txHash, topic ?? "unknown");
   } catch (err) {
     console.error(`[event-indexer] Handler failed for topic=${topic} tx=${txHash}:`, err);
     // Leave processed=false so it can be retried
   }
+}
+
+/** Activate the member whose Stellar address appears in the member_joined event. */
+async function onMemberJoined(val: any): Promise<void> {
+  if (!val.circle_id || !val.member_address) return;
+  await query(
+    `UPDATE members m
+     SET status = 'active'
+     FROM users u
+     WHERE m.user_id = u.id
+       AND m.circle_id = $1
+       AND u.stellar_public_key = $2
+       AND m.status != 'active'`,
+    [val.circle_id, val.member_address]
+  );
+  console.log(`[event-indexer] member_joined → activated member for circle ${val.circle_id}`);
 }
 
 /** Confirm the pending contribution that corresponds to this on-chain event. */
