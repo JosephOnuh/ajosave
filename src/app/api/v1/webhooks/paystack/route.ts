@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { query, transaction } from "@/lib/db";
 import { serverConfig } from "@/server/config";
 import logger from "@/lib/logger";
+import { grantReferralReward } from "@/server/services/referral.service";
 
 function verifySignature(payload: string, signature: string): boolean {
   if (!signature || !serverConfig.paystack.secretKey) return false;
@@ -127,6 +128,22 @@ export async function POST(req: NextRequest) {
             contrib.id,
           ]
         );
+
+        if (isFullyPaid) {
+          // Fetch the user_id for this contribution to trigger referral reward.
+          // Fire-and-forget: referral failure must not block webhook response.
+          const { rows: memberRows } = await q<{ user_id: string }>(
+            `SELECT m.user_id FROM contributions c
+             JOIN members m ON m.id = c.member_id
+             WHERE c.id = $1`,
+            [contrib.id]
+          );
+          if (memberRows[0]) {
+            grantReferralReward(memberRows[0].user_id).catch((err) =>
+              logger.error({ err }, "[referral] Failed to grant reward")
+            );
+          }
+        }
 
         logger.info(
           {
