@@ -49,6 +49,8 @@ Today this runs entirely on trust — no contracts, no guarantees, frequent frau
                                           └─────────────────┘
 ```
 
+Key architectural decisions are documented in [`docs/adr/`](docs/adr/README.md).
+
 ### Tech Stack
 
 | Layer | Technology |
