@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { query, getPoolStats } from "@/lib/db";
 import { serverConfig } from "@/server/config";
 import { checkHorizonHealth } from "@/lib/stellar";
+import logger from "@/lib/logger";
+
+const POOL_WAITING_ALERT_THRESHOLD = 3;
 
 async function checkDb(): Promise<boolean> {
   try {
@@ -31,6 +34,14 @@ export async function GET() {
   const healthy = db && redis;
   const poolStats = getPoolStats();
 
+  // Alert when waiting queue exceeds threshold (#478)
+  if (poolStats && poolStats.waitingCount > POOL_WAITING_ALERT_THRESHOLD) {
+    logger.warn(
+      { pool: poolStats },
+      `[db] Pool waiting queue (${poolStats.waitingCount}) exceeds threshold of ${POOL_WAITING_ALERT_THRESHOLD}`
+    );
+  }
+
   return NextResponse.json(
     {
       status: healthy ? "ok" : "degraded",
@@ -42,6 +53,7 @@ export async function GET() {
             total: poolStats.totalCount,
             idle: poolStats.idleCount,
             waiting: poolStats.waitingCount,
+            alert: poolStats.waitingCount > POOL_WAITING_ALERT_THRESHOLD,
           }
         : null,
       timestamp: new Date().toISOString(),

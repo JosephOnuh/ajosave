@@ -3,13 +3,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { withAdminAuth, withErrorHandler } from "@/server/middleware";
 import { resolveDispute, confirmContributionFromDispute, updateDisputeStatus, getAllDisputes } from "@/server/services/dispute.service";
+import { resolveDisputeSchema } from "@/types/schemas";
 import type { ApiResponse, Dispute } from "@/types";
 import { z } from "zod";
 
 const ResolveDisputeSchema = z.object({
   disputeId: z.string().uuid(),
   status: z.enum(["investigating", "resolved", "rejected"]),
-  resolutionNotes: z.string().min(5).max(500).optional(),
+  resolutionNotes: z.string().max(2000).optional(),
   txHash: z.string().optional(),
   contributionId: z.string().uuid().optional(),
 });

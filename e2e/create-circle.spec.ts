@@ -1,29 +1,9 @@
 import { test, expect } from "@playwright/test";
-
-// Simulate an authenticated session cookie so protected pages load
-const AUTH_COOKIE = {
-  name: "next-auth.session-token",
-  value: "e2e-test-session",
-  domain: "localhost",
-  path: "/",
-  httpOnly: true,
-  sameSite: "Lax" as const,
-};
+import { mockAuthSession } from "./helpers/auth";
 
 test.describe("Create Circle", () => {
   test.beforeEach(async ({ page, context }) => {
-    // Mock the session endpoint so the app treats us as logged in
-    await context.addCookies([AUTH_COOKIE]);
-    await page.route("/api/auth/session", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          user: { id: "user-1", name: "Test User", phone: "+2348012345678" },
-          expires: "2099-01-01",
-        }),
-      })
-    );
+    await mockAuthSession(context, page);
   });
 
   test("create circle form renders required fields", async ({ page }) => {
@@ -55,7 +35,6 @@ test.describe("Create Circle", () => {
   test("shows validation error for missing fields", async ({ page }) => {
     await page.goto("/circles/create");
     await page.getByRole("button", { name: /create circle/i }).click();
-    // HTML5 required validation or custom error message
     const nameInput = page.getByLabel(/circle name/i);
     await expect(nameInput).toBeFocused();
   });

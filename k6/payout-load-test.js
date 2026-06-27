@@ -11,8 +11,8 @@ export const options = {
   vus: 50,
   duration: "30s",
   thresholds: {
-    // p95 latency baseline: document actual value from first run
-    http_req_duration: ["p(95)<5000"],
+    // Fail CI if p95 payout latency exceeds 500ms (#517)
+    http_req_duration: ["p(95)<500"],
     payout_error_rate: ["rate<0.1"],
   },
 };
@@ -48,11 +48,10 @@ export default function () {
 
 export function handleSummary(data) {
   const p95 = data.metrics.http_req_duration?.values?.["p(95)"];
+  const errRate = (data.metrics.payout_error_rate?.values?.rate || 0) * 100;
   console.log(`\n=== Payout Endpoint Load Test Results ===`);
-  console.log(`p95 latency: ${p95 ? p95.toFixed(2) + "ms" : "N/A"}`);
-  console.log(
-    `Error rate: ${(data.metrics.payout_error_rate?.values?.rate * 100 || 0).toFixed(2)}%`
-  );
+  console.log(`p95 latency: ${p95 ? p95.toFixed(2) + "ms" : "N/A"} (threshold: 500ms)`);
+  console.log(`Error rate: ${errRate.toFixed(2)}%`);
   console.log(`Total requests: ${data.metrics.http_reqs?.values?.count || 0}`);
 
   return {

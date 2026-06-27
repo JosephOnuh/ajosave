@@ -84,6 +84,36 @@ components:
           example: "UNAUTHORIZED"
 
     # ── Domain objects ──────────────────────────────────────────────────────────
+
+    # Soroban AjoContract.get_state() returns a 5-tuple:
+    #   (current_cycle: u32, max_members: u32, next_payout_time: u64, completed: bool, paused: bool)
+    # This schema mirrors that tuple for any REST endpoint that surfaces on-chain state.
+    ContractState:
+      type: object
+      required: [currentCycle, maxMembers, nextPayoutTime, completed, paused]
+      properties:
+        currentCycle:
+          type: integer
+          description: 1-indexed number of the current payout cycle (0 = circle not started)
+          example: 2
+        maxMembers:
+          type: integer
+          description: Total number of members (= total number of cycles)
+          example: 5
+        nextPayoutTime:
+          type: integer
+          format: int64
+          description: Unix timestamp (seconds) when the next payout becomes eligible
+          example: 1719360000
+        completed:
+          type: boolean
+          description: True once all cycles have paid out
+          example: false
+        paused:
+          type: boolean
+          description: True when the admin has paused contributions and payouts
+          example: false
+
     Circle:
       type: object
       required: [id, name, creatorId, contributionUsdc, contributionFiat, contributionCurrency, circleType, maxMembers, cycleFrequency, status, currentCycle, createdAt, updatedAt]

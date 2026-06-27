@@ -1,3 +1,4 @@
+// .
 import { query } from "@/lib/db";
 import {
   notifyPayoutReminder,
@@ -197,7 +198,8 @@ export async function sendContributionReminders(): Promise<void> {
             member.userId,
             circle.name,
             circle.contributionUsdc,
-            hoursLeft
+            hoursLeft,
+            circle.id
           );
 
           // Record that we sent the reminder (idempotency insert)

@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { NavLink } from "./NavLink";
 import { LanguageSelector } from "./LanguageSelector";
+import { FreighterWalletStatus } from "@/components/wallet/FreighterWalletStatus";
 import { locales, defaultLocale, type Locale } from "@/i18n";
 import styles from "./Navbar.module.css";
 
@@ -27,11 +28,13 @@ export async function Navbar() {
           <li><Link href="/circles" className={styles.link}>Browse Circles</Link></li>
           <li><Link href="/dashboard" className={styles.link}>Dashboard</Link></li>
           <li><Link href="/analytics" className={styles.link}>Analytics</Link></li>
+          <li><Link href="/help" className={styles.link}>Help</Link></li>
           {isAdmin && <li><Link href="/admin" className={styles.link}>Admin</Link></li>}
           {session?.user
             ? <li><NavLink href="/profile">Profile</NavLink></li>
             : <li><Link href="/auth/login" className="btn btn--primary btn--sm">Sign In</Link></li>
           }
+          <li><FreighterWalletStatus /></li>
           <li><LanguageSelector currentLocale={locale} /></li>
           <li><ThemeToggle /></li>
         </ul>

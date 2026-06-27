@@ -6,14 +6,28 @@ jest.mock("next/server", () => ({
 }));
 jest.mock("@sentry/nextjs", () => ({ captureException: jest.fn() }));
 jest.mock("next-auth", () => ({ getServerSession: jest.fn() }));
+jest.mock("@/lib/encryption", () => ({ hmacIndex: jest.fn((v: string) => `hmac:${v}`) }));
 jest.mock("@/lib/lockout", () => ({
   getLockoutStatus: jest.fn().mockResolvedValue({ isLocked: false, attempts: 0, remainingAttempts: 5 }),
   recordFailure: jest.fn().mockResolvedValue({ isLocked: false, attempts: 1, remainingAttempts: 4 }),
   resetLockout: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("@/lib/db", () => ({
-  query: jest.fn().mockResolvedValue({
-    rows: [{ id: "u1", phone: "+2348012345678", display_name: "Test", role: "user" }],
+  query: jest.fn().mockImplementation(async (text: string, params: any[]) => {
+    // Simulate SELECT by phone_hash
+    if (text.includes("WHERE phone_hash = $1")) {
+      if (params && params[0] === "hmac-+2348012345678") {
+        return { rows: [{ id: "u1", phone: "enc-+2348012345678", display_name: "Test", role: "user" }] };
+      }
+      return { rows: [] };
+    }
+
+    // Simulate INSERT returning created user
+    if (text.trim().startsWith("INSERT INTO users")) {
+      return { rows: [{ id: "u2", phone: params?.[0] ?? "", display_name: "Ajosave User", role: "user" }] };
+    }
+
+    return { rows: [] };
   }),
 }));
 jest.mock("@/lib/redis", () => ({
@@ -57,5 +71,21 @@ describe("POST /api/v1/auth/verify-otp — rate limiting", () => {
     getRedis.mockResolvedValueOnce({ get: jest.fn().mockResolvedValue(null), del: jest.fn() });
     const res = await POST(makeReq({ phone: "+2348012345678", otp: "000000" }) as any);
     expect(res.status).toBe(401);
+  });
+
+  it("looks up OTP under hmac key, never plaintext phone", async () => {
+    const phone = "+2348012345678";
+    const mockGet = jest.fn().mockResolvedValue("123456");
+    const mockDel = jest.fn().mockResolvedValue(1);
+    const { getRedis } = require("@/lib/redis");
+    getRedis.mockResolvedValueOnce({ get: mockGet, del: mockDel });
+    await POST(makeReq({ phone, otp: "123456" }) as any);
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    const [getKey] = mockGet.mock.calls[0];
+    expect(getKey).toMatch(/^otp:/);
+    expect(getKey).not.toContain(phone);
+    const [delKey] = mockDel.mock.calls[0];
+    expect(delKey).toMatch(/^otp:/);
+    expect(delKey).not.toContain(phone);
   });
 });
