@@ -72,6 +72,15 @@ pub enum DataKey {
     PayoutLock,
 }
 
+// ─── Error types ──────────────────────────────────────────────────────────────
+
+#[contracttype]
+#[derive(Debug, PartialEq)]
+pub enum ContractError {
+    /// `payout_amount != contribution_amount * max_members` — arithmetic invariant violated.
+    InvalidPayoutAmount,
+}
+
 // ─── Contract ─────────────────────────────────────────────────────────────────
 
 #[contract]
@@ -402,7 +411,18 @@ impl AjoContract {
 
         let token: Address = env.storage().instance().get(&DataKey::Token).expect("not initialized");
         let contribution: i128 = env.storage().instance().get(&DataKey::ContributionAmount).expect("not initialized");
-        let pot = contribution * (max_members as i128);
+
+        // ─── Invariant: payout_amount == contribution_amount * max_members ────────
+        // checked_mul guards against i128 overflow; if it fails the arithmetic is
+        // inconsistent with stored parameters and we must not transfer.
+        let pot: i128 = match contribution.checked_mul(max_members as i128) {
+            Some(p) => p,
+            None => panic!("InvalidPayoutAmount"),
+        };
+        // Secondary assertion: pot must be strictly positive
+        if pot <= 0 {
+            panic!("InvalidPayoutAmount");
+        }
 
         // ─── Effects before external call ─────────────────────────────────────
         if current_cycle >= max_members {
