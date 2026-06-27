@@ -26,6 +26,16 @@ S3_KEY="backups/postgres/${TIMESTAMP}.sql.gz"
 aws s3 cp "$BACKUP_FILE" "s3://${S3_BACKUP_BUCKET}/${S3_KEY}" \
   --storage-class STANDARD_IA
 
+SHA256=$(sha256sum "$BACKUP_FILE" | awk '{print $1}')
+aws s3api copy-object \
+  --bucket "${S3_BACKUP_BUCKET}" \
+  --copy-source "${S3_BACKUP_BUCKET}/${S3_KEY}" \
+  --key "${S3_KEY}" \
+  --metadata "{\"sha256\":\"${SHA256}\"}" \
+  --metadata-directive REPLACE \
+  --storage-class STANDARD_IA > /dev/null
+echo "[$(date -u)] SHA-256: ${SHA256}"
+
 echo "[$(date -u)] Uploaded to s3://${S3_BACKUP_BUCKET}/${S3_KEY}"
 
 # Enforce retention policy

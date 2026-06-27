@@ -1,7 +1,7 @@
 /**
  * @jest-environment node
  */
-import { GET, POST } from "@/app/api/circles/route";
+import { GET, POST } from "@/app/api/v1/circles/route";
 import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth";
 import { createCircle, listOpenCircles, getCirclesByUser } from "@/server/services/circle.service";

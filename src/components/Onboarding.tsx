@@ -62,18 +62,9 @@ export function Onboarding({ onClose }: { onClose?: () => void }) {
           )}
           {step === 2 && (
             <div>
-              <h3>How Ajo Works</h3>
-              <ul>
-                <li>Create or join a circle</li>
-                <li>Contribute regularly</li>
-                <li>Members take turns receiving the pooled funds</li>
-              </ul>
-            </div>
-          )}
-          {step === 3 && (
-            <div>
-              <h3>Your First Circle</h3>
-              <p>Choose to create a new circle or browse open circles to join and start saving together.</p>
+              <h3>Make Your First Contribution</h3>
+              <p>Create or join a circle and contribute USDC to start saving together.</p>
+              <p>Need guidance? Visit our <a href="/help">Help Center</a> or check the <a href="/faq">FAQ</a>.</p>
             </div>
           )}
         </div>

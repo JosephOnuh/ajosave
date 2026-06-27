@@ -7,6 +7,7 @@ import {
   validateStellarRecipient,
   getCurrentBaseFee,
   calculatePriorityFee,
+  wrapWithFeeBump,
 } from "../stellar";
 import logger from "../logger";
 
@@ -163,6 +164,38 @@ describe("sendUsdcPayment retry logic", () => {
   });
 });
 
+describe("sendUsdcPayment memo", () => {
+  const destination = "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5";
+  const amount = "10.0000000";
+  const mockAccount = {
+    sequenceNumber: () => "1",
+    accountId: () => destination,
+    incrementSequenceNumber: () => {},
+    balances: [{ asset_type: "credit_alphanum4", asset_code: "USDC", asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", balance: "100.0000000" }],
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (horizonServer.loadAccount as jest.Mock) = jest.fn().mockResolvedValue(mockAccount);
+    (horizonServer.submitTransaction as jest.Mock) = jest.fn().mockResolvedValue({ hash: "memo-hash" });
+  });
+
+  it("attaches a text memo to the transaction when provided", async () => {
+    await sendUsdcPayment(destination, amount, "ajo-circle-1-cycle-2");
+
+    const tx = (horizonServer.submitTransaction as jest.Mock).mock.calls[0][0];
+    expect(tx.memo.type).toBe("text");
+    expect(tx.memo.value).toBe("ajo-circle-1-cycle-2");
+  });
+
+  it("submits no memo when memo is omitted", async () => {
+    await sendUsdcPayment(destination, amount);
+
+    const tx = (horizonServer.submitTransaction as jest.Mock).mock.calls[0][0];
+    expect(tx.memo.type).toBe("none");
+  });
+});
+
 describe("USDC trustline checks", () => {
   const publicKey = "GDNIKPB2TPPS2RZG6TDW76YFSPNVEINVTJIPVEPA25Y74TPSLBNOA336";
   const usdcBalance = {
@@ -260,6 +293,54 @@ describe("USDC trustline checks", () => {
   });
 });
 
+describe("sendUsdcPayment fee calculation", () => {
+  const destination = "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5";
+  const amount = "10.0000000";
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("calls getCurrentBaseFee and uses calculatePriorityFee in TransactionBuilder", async () => {
+    const mockBaseFee = 200;
+    (horizonServer.feeStats as jest.Mock) = jest.fn().mockResolvedValue({
+      fee_charged: { mode: String(mockBaseFee) },
+    });
+
+    const mockAccount = {
+      sequenceNumber: () => "1",
+      accountId: () => destination,
+      incrementSequenceNumber: () => {},
+      balances: [
+        {
+          asset_type: "credit_alphanum4",
+          asset_code: "USDC",
+          asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+          balance: "100.0000000",
+        },
+      ],
+    };
+    (horizonServer.loadAccount as jest.Mock) = jest.fn().mockResolvedValue(mockAccount);
+    (horizonServer.submitTransaction as jest.Mock) = jest
+      .fn()
+      .mockResolvedValue({ hash: "fee-test-hash" });
+
+    const hash = await sendUsdcPayment(destination, amount);
+
+    expect(hash).toBe("fee-test-hash");
+    expect(horizonServer.feeStats).toHaveBeenCalledTimes(1);
+
+    // The submitted transaction should carry the priority fee (2 × baseFee = 400)
+    const submittedTx = (horizonServer.submitTransaction as jest.Mock).mock.calls[0][0];
+    expect(Number(submittedTx.fee)).toBe(calculatePriorityFee(mockBaseFee));
+  });
+});
+
 describe("sendUsdcPayment pathfinding fallback", () => {
   const destination = "GCBVPTGYLOELZOOOLS4W765VOL3CCXWCTTTGWIYSAFPRLJLRG6VWAEB5";
   const amount = "10.0000000";
@@ -352,6 +433,80 @@ describe("sendUsdcPayment pathfinding fallback", () => {
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ balance: 0 }),
       expect.stringContaining("Insufficient USDC")
+    );
+  });
+});
+
+describe("wrapWithFeeBump dynamic fee", () => {
+  // Build a minimal valid inner transaction XDR for testing
+  const { Keypair: SdkKeypair, TransactionBuilder, Networks, Operation, Asset, Account } = require("@stellar/stellar-sdk");
+  const innerKeypair = SdkKeypair.fromSecret("SA3JUJWMEM6TJAAFUZDARKE4WFJHWJKEDU6CW4AULPRNU6VL7PPXKVMZ");
+
+  function buildInnerXdr(): string {
+    const account = new Account(innerKeypair.publicKey(), "1");
+    const tx = new TransactionBuilder(account, {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(
+        Operation.payment({
+          destination: innerKeypair.publicKey(),
+          asset: Asset.native(),
+          amount: "1",
+        })
+      )
+      .setTimeout(30)
+      .build();
+    tx.sign(innerKeypair);
+    return tx.toXDR();
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("uses 1.5× live base fee from Horizon", async () => {
+    (horizonServer.feeStats as jest.Mock) = jest.fn().mockResolvedValue({
+      fee_charged: { mode: "200", min: "100", p50: "150" },
+    });
+    (horizonServer.submitTransaction as jest.Mock) = jest.fn().mockResolvedValue({ hash: "fee-bump-hash" });
+
+    const hash = await wrapWithFeeBump(buildInnerXdr());
+
+    expect(hash).toBe("fee-bump-hash");
+    // fee should be ceil(200 * 1.5) = 300 — logged via logger.info
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ liveBaseFee: 200, feeMultiplier: 1.5, maxFee: 300 }),
+      expect.stringContaining("dynamic fee")
+    );
+  });
+
+  it("uses custom multiplier when provided", async () => {
+    (horizonServer.feeStats as jest.Mock) = jest.fn().mockResolvedValue({
+      fee_charged: { mode: "200", min: "100", p50: "150" },
+    });
+    (horizonServer.submitTransaction as jest.Mock) = jest.fn().mockResolvedValue({ hash: "custom-mult-hash" });
+
+    const hash = await wrapWithFeeBump(buildInnerXdr(), 2.0);
+
+    expect(hash).toBe("custom-mult-hash");
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ feeMultiplier: 2.0, maxFee: 400 }),
+      expect.any(String)
+    );
+  });
+
+  it("falls back to BASE_FEE * 2 when Horizon fee fetch fails", async () => {
+    (horizonServer.feeStats as jest.Mock) = jest.fn().mockRejectedValue(new Error("Horizon unavailable"));
+    (horizonServer.submitTransaction as jest.Mock) = jest.fn().mockResolvedValue({ hash: "fallback-hash" });
+
+    const hash = await wrapWithFeeBump(buildInnerXdr());
+
+    expect(hash).toBe("fallback-hash");
+    // BASE_FEE is 100, fallback = 100 * 2 = 200
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ maxFee: 200 }),
+      expect.stringContaining("fallback fee")
     );
   });
 });

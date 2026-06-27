@@ -5,6 +5,7 @@ import {
   TransactionBuilder,
   Transaction,
   Operation,
+  Memo,
   BASE_FEE,
   Networks,
   StrKey,
@@ -128,26 +129,34 @@ function isRetryable(err: any): boolean {
  * Issue #141: if the server account has insufficient USDC, falls back to
  *             pathPaymentStrictSend (XLM → USDC via DEX) with configurable slippage.
  */
-export async function sendUsdcPayment(destination: string, amount: string): Promise<string> {
+export async function sendUsdcPayment(destination: string, amount: string, memo?: string): Promise<string> {
   const keypair = Keypair.fromSecret(serverConfig.stellar.serverSecretKey);
   const MAX_ATTEMPTS = 4;
+  const baseFee = await getCurrentBaseFee();
+  const fee = String(calculatePriorityFee(baseFee));
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const account = await withFallback((s) => s.loadAccount(keypair.publicKey()));
 
-      const tx = new TransactionBuilder(account, { fee, networkPassphrase })
+      const baseFee = await getCurrentBaseFee();
+      const fee = String(calculatePriorityFee(baseFee));
+
+      const builder = new TransactionBuilder(account, { fee, networkPassphrase })
         .addOperation(Operation.payment({ destination, asset: USDC, amount }))
-        .setTimeout(30)
-        .build();
+        .setTimeout(30);
+
+      if (memo) builder.addMemo(Memo.text(memo));
+
+      const tx = builder.build();
 
       tx.sign(keypair);
       const result = await withFallback((s) => s.submitTransaction(tx));
       
       if (attempt > 1) {
-        logger.info({ attempt, destination, hash: result.hash, baseFee, fee }, "[stellar] sendUsdcPayment succeeded after retry");
+        logger.info({ attempt, destination, hash: result.hash, baseFee, fee, memo }, "[stellar] sendUsdcPayment succeeded after retry");
       } else {
-        logger.info({ destination, hash: result.hash, baseFee, fee }, "[stellar] sendUsdcPayment succeeded");
+        logger.info({ destination, hash: result.hash, baseFee, fee, memo }, "[stellar] sendUsdcPayment succeeded");
       }
 
       return result.hash;
@@ -222,16 +231,30 @@ export async function validateStellarRecipient(publicKey: string): Promise<void>
  * The inner transaction must already be signed by the user's keypair.
  * The platform keypair signs the outer fee bump envelope.
  *
+ * Fee is fetched live from Horizon (1.5× current base fee).
+ * Falls back to BASE_FEE * 2 if the Horizon request fails.
+ *
  * @param innerTxXdr - XDR of the signed inner transaction
+ * @param feeMultiplier - multiplier applied to the live base fee (default 1.5)
  * @returns The submitted fee bump transaction hash
  */
-export async function wrapWithFeeBump(innerTxXdr: string): Promise<string> {
+export async function wrapWithFeeBump(innerTxXdr: string, feeMultiplier = 1.5): Promise<string> {
   const feeKeypair = Keypair.fromSecret(serverConfig.stellar.serverSecretKey);
   const innerTx = TransactionBuilder.fromXDR(innerTxXdr, networkPassphrase) as Transaction;
 
+  let maxFee: number;
+  try {
+    const liveBaseFee = await getCurrentBaseFee();
+    maxFee = Math.ceil(liveBaseFee * feeMultiplier);
+    logger.info({ liveBaseFee, feeMultiplier, maxFee }, "[stellar] wrapWithFeeBump: using dynamic fee");
+  } catch (err) {
+    maxFee = Number(BASE_FEE) * 2;
+    logger.warn({ err, maxFee }, "[stellar] wrapWithFeeBump: Horizon fee fetch failed, using fallback fee");
+  }
+
   const feeBump = TransactionBuilder.buildFeeBumpTransaction(
     feeKeypair,
-    BASE_FEE,
+    String(maxFee),
     innerTx,
     networkPassphrase
   );
@@ -253,3 +276,4 @@ export function enqueueStellarTransaction<T>(fn: () => Promise<T>): Promise<T> {
   _txQueue = next.catch(() => {}); // keep queue alive even if fn throws
   return next as Promise<T>;
 }
+

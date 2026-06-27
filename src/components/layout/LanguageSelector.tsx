@@ -17,6 +17,7 @@ export function LanguageSelector({ currentLocale }: { currentLocale: string }) {
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const locale = e.target.value;
     document.cookie = `locale=${locale};path=/;max-age=31536000`;
+    localStorage.setItem("preferred-locale", locale);
     startTransition(() => router.refresh());
   }
 

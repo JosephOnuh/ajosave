@@ -67,6 +67,31 @@ export default function HelpPage() {
         </section>
 
         <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>Fees &amp; Costs</h2>
+          <div className={styles.guide}>
+            <h3>Platform Fee</h3>
+            <p>
+              Ajosave charges a small platform fee on each contribution to cover operational costs.
+              The fee is shown before you confirm payment and is deducted from your Naira payment 
+              via Paystack — you never pay more than displayed.
+            </p>
+
+            <h3>Stellar Network Fees</h3>
+            <p>
+              On-chain USDC transfers use the Stellar network, which charges a tiny fraction of 
+              a cent per transaction (typically &lt;$0.001). This is covered by Ajosave — 
+              you pay nothing extra for blockchain fees.
+            </p>
+
+            <h3>Exchange Rate</h3>
+            <p>
+              Your Naira contribution is converted to USDC at the market rate at the time of payment.
+              The rate used is displayed during checkout so there are no hidden surprises.
+            </p>
+          </div>
+        </section>
+
+        <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Troubleshooting</h2>
           <div className={styles.faq}>
             <h4>{"I didn't receive my payout"}</h4>
@@ -90,6 +115,9 @@ export default function HelpPage() {
           <p>
             Email us at <a href="mailto:support@ajosave.app">support@ajosave.app</a> or 
             join our <a href="https://t.me/ajosave" target="_blank" rel="noopener noreferrer">Telegram community</a>.
+          </p>
+          <p>
+            You can also browse our <a href="/faq" className={styles.link}>FAQ page</a> for answers to common questions about Ajo, USDC, payouts, and fees.
           </p>
         </div>
       </div>

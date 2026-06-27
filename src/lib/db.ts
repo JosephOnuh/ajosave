@@ -19,6 +19,7 @@
  */
 import { Pool, type QueryResult, type QueryResultRow } from "pg";
 import { serverConfig } from "@/server/config";
+import logger from "@/lib/logger";
 
 const _DB_POOL_SIZE = parseInt(process.env.DB_POOL_SIZE ?? "10", 10);
 const _DB_CONNECTION_TIMEOUT_MS = parseInt(process.env.DB_CONNECTION_TIMEOUT_MS ?? "5000", 10);
@@ -43,28 +44,32 @@ function getPool(): Pool {
       connectionTimeoutMillis: 5_000,
       // Validate connections before use to detect stale connections
       allowExitOnIdle: false,
-      ssl: serverConfig.stellar.network === "mainnet" ? { rejectUnauthorized: true } : false,
+      ssl: (() => {
+        const sslMode = process.env.DATABASE_SSL_MODE ?? (serverConfig.stellar.network === "mainnet" ? "require" : serverConfig.stellar.network === "local" ? "disable" : "no-verify");
+        if (sslMode === "disable") return false;
+        return { rejectUnauthorized: sslMode === "require" };
+      })(),
     });
 
     // Pool event listeners for monitoring and debugging
     pool.on("connect", (_client) => {
-      console.log("[db] New client connected to pool");
+      logger.debug("[db] New client connected to pool");
     });
 
     pool.on("acquire", (_client) => {
-      console.log("[db] Client acquired from pool");
+      logger.debug("[db] Client acquired from pool");
     });
 
     pool.on("remove", (_client) => {
-      console.log("[db] Client removed from pool");
+      logger.info("[db] Client removed from pool");
     });
 
     pool.on("error", (_err, _client) => {
-      console.error("[db] Unexpected pool error:", _err);
+      logger.error({ err: _err }, "[db] Unexpected pool error");
       // Don't exit process - let the pool handle reconnection
     });
 
-    console.log(`[db] Connection pool initialized (min: ${minPoolSize}, max: ${maxPoolSize})`);
+    logger.info(`[db] Connection pool initialized (min: ${minPoolSize}, max: ${maxPoolSize})`);
   }
   return pool;
 }
@@ -76,12 +81,12 @@ function getPool(): Pool {
  */
 export async function closePool(): Promise<void> {
   if (pool) {
-    console.log("[db] Closing connection pool...");
+    logger.info("[db] Closing connection pool...");
     try {
       await pool.end();
-      console.log("[db] Connection pool closed successfully");
+      logger.info("[db] Connection pool closed successfully");
     } catch (err) {
-      console.error("[db] Error closing pool:", err);
+      logger.error({ err }, "[db] Error closing pool:");
       throw err;
     } finally {
       pool = null;
@@ -104,8 +109,6 @@ export function getPoolStats() {
   };
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 /**
  * Execute a parameterized query with automatic retry on transient connection errors.
  * @param text  SQL with $1, $2, … placeholders — never interpolate user input
@@ -127,7 +130,7 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
           err.message.includes("connection timeout") ||
           err.message.includes("ECONNRESET"));
       if (!isTransient || attempt === DB_MAX_RETRIES) throw err;
-      console.warn(`[db] query attempt ${attempt} failed, retrying in ${DB_RETRY_DELAY_MS}ms…`);
+      logger.warn(`[db] query attempt ${attempt} failed, retrying in ${DB_RETRY_DELAY_MS}ms…`);
       await sleep(DB_RETRY_DELAY_MS * attempt);
     }
   }
