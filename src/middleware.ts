@@ -1,17 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const ALLOWED_ORIGINS = [
-  process.env.NEXT_PUBLIC_APP_URL,
-  process.env.NEXTAUTH_URL,
-  "http://localhost:3000",
-  "https://ajosave.app",
-  "https://www.ajosave.app",
-]
-  .filter(Boolean)
-  .map((origin) => origin!.trim().replace(/\/$/, ""));
+import { randomBytes } from "crypto";
 
 export function middleware(request: NextRequest) {
   const origin = request.headers.get("origin");
+  const nonce = randomBytes(16).toString("base64");
+  const csp = buildCsp(nonce);
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+
+  const configuredOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",")
+    : [];
+
+  const allowedOrigins = [
+    ...configuredOrigins,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXTAUTH_URL,
+    "http://localhost:3000",
+    "https://ajosave.app",
+    "https://www.ajosave.app",
+  ]
+    .filter(Boolean)
+    .map((o) => o!.trim().replace(/\/$/, ""));
 
   // Handle API versioning redirects
   if (request.nextUrl.pathname.startsWith("/api/") && !request.nextUrl.pathname.startsWith("/api/v1/")) {
@@ -33,14 +44,20 @@ export function middleware(request: NextRequest) {
 
   // Handle CORS for API routes
   if (request.nextUrl.pathname.startsWith("/api/")) {
-    const isAllowed = origin && ALLOWED_ORIGINS.includes(origin);
+    // If it's a CORS request (origin header is present)
+    if (origin) {
+      const isAllowed = allowedOrigins.includes(origin);
+      if (!isAllowed) {
+        return NextResponse.json(
+          { error: "Origin not allowed by CORS policy" },
+          { status: 403 }
+        );
+      }
 
-    // Handle preflight requests
-    if (request.method === "OPTIONS") {
-      const response = new NextResponse(null, { status: 204 });
-
-      if (isAllowed) {
-        response.headers.set("Access-Control-Allow-Origin", origin!);
+      // Handle preflight requests
+      if (request.method === "OPTIONS") {
+        const response = new NextResponse(null, { status: 204 });
+        response.headers.set("Access-Control-Allow-Origin", origin);
         response.headers.set(
           "Access-Control-Allow-Methods",
           "GET, POST, PUT, DELETE, PATCH, OPTIONS"
@@ -51,15 +68,12 @@ export function middleware(request: NextRequest) {
         );
         response.headers.set("Access-Control-Allow-Credentials", "true");
         response.headers.set("Access-Control-Max-Age", "86400");
+        return response;
       }
 
-      return response;
-    }
-
-    const response = NextResponse.next();
-
-    if (isAllowed) {
-      response.headers.set("Access-Control-Allow-Origin", origin!);
+      // Handle regular requests (GET, POST, etc.)
+      const response = NextResponse.next();
+      response.headers.set("Access-Control-Allow-Origin", origin);
       response.headers.set(
         "Access-Control-Allow-Methods",
         "GET, POST, PUT, DELETE, PATCH, OPTIONS"
@@ -69,14 +83,20 @@ export function middleware(request: NextRequest) {
         "Content-Type, Authorization, X-Requested-With, X-CSRF-Token"
       );
       response.headers.set("Access-Control-Allow-Credentials", "true");
+      return response;
     }
-
-    return response;
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy-Report-Only", csp);
+
+  return response;
 }
 
 export const config = {
-  matcher: "/api/:path*",
+  matcher: [
+    "/api/:path*",
+    // Apply CSP to all page routes (exclude static files and _next internals)
+    "/((?!_next/static|_next/image|favicon.ico).*)",
+  ],
 };
