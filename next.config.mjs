@@ -33,8 +33,11 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
-    serverComponentsExternalPackages: ["@stellar/stellar-sdk"],
+    serverComponentsExternalPackages: ["@stellar/stellar-sdk", "nodemailer", "handlebars"],
     instrumentationHook: true,
+    outputFileTracingIncludes: {
+      "/api/**": ["./src/email-templates/**"],
+    },
   },
   async headers() {
     return [

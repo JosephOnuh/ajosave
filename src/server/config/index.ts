@@ -25,4 +25,12 @@ export const serverConfig = {
   },
   redis: { url: process.env.REDIS_URL ?? "redis://localhost:6379" },
   database: { url: process.env.DATABASE_URL ?? "" },
+  email: {
+    host: process.env.SMTP_HOST ?? "localhost",
+    port: Number(process.env.SMTP_PORT ?? 587),
+    secure: process.env.SMTP_SECURE === "true",
+    user: process.env.SMTP_USER ?? "",
+    pass: process.env.SMTP_PASS ?? "",
+    from: process.env.SMTP_FROM ?? "noreply@ajosave.app",
+  },
 } as const;
