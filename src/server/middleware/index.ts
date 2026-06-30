@@ -8,6 +8,7 @@ import { randomUUID } from "crypto";
 import logger from "@/lib/logger";
 import { runWithCorrelationId } from "@/lib/correlation";
 import { sanitizeBody } from "@/lib/sanitize";
+import { validateCsrfToken, CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "@/lib/csrf";
 
 type Handler = (_req: NextRequest, _ctx?: any) => Promise<NextResponse>;
 
@@ -181,5 +182,43 @@ export function withIdempotency(handler: Handler): Handler {
     });
 
     return response;
+  };
+}
+
+// ─── CSRF protection ───────────────────────────────────────────────────────────
+
+/**
+ * Middleware wrapper that enforces CSRF token validation for mutating endpoints.
+ *
+ * Implements the double-submit cookie pattern:
+ *   1. Client obtains a token via GET /api/auth/csrf (sets __csrf cookie).
+ *   2. Client reads the cookie and sends it back as the x-csrf-token header.
+ *   3. This middleware validates that both values produce the same HMAC.
+ *
+ * Safe methods (GET, HEAD, OPTIONS) are always allowed through.
+ */
+export function withCsrf(handler: Handler): Handler {
+  const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+  return async (req, ctx) => {
+    if (SAFE_METHODS.has(req.method)) {
+      return handler(req, ctx);
+    }
+
+    const cookieToken = req.cookies.get(CSRF_COOKIE_NAME)?.value ?? "";
+    const headerToken = req.headers.get(CSRF_HEADER_NAME) ?? "";
+
+    if (!cookieToken || !headerToken || !validateCsrfToken(cookieToken, headerToken)) {
+      logger.warn(
+        { method: req.method, path: new URL(req.url).pathname },
+        "CSRF validation failed"
+      );
+      return NextResponse.json<ApiError>(
+        { success: false, error: "Invalid CSRF token", code: "CSRF_INVALID" },
+        { status: 403 }
+      );
+    }
+
+    return handler(req, ctx);
   };
 }
