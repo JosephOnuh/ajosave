@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Circle, Member } from "@/types";
 import { CircleStatusBadge } from "@/components/ui/CircleStatusBadge";
+import { getCurrencySymbol, SupportedCurrency } from "@/lib/currency";
 import { format } from "date-fns";
 import styles from "./CircleCard.module.css";
 
@@ -8,10 +9,32 @@ interface CircleCardProps {
   circle: Circle;
   members: Member[];
   showJoin?: boolean;
+  loading?: boolean;
 }
 
-export function CircleCard({ circle, members, showJoin = false }: CircleCardProps) {
-  const spotsLeft = circle.maxMembers - members.length;
+export function CircleCard({ circle, members, showJoin = false, loading = false }: CircleCardProps) {
+  const currentMemberCount = members.length > 0 ? members.length : (circle.memberCount ?? 0);
+  const spotsLeft = circle.maxMembers - currentMemberCount;
+  const currencySymbol = getCurrencySymbol(circle.contributionCurrency as SupportedCurrency);
+
+  if (loading) {
+    return (
+      <article className={styles.card} role="status" aria-busy="true" aria-live="polite">
+        <div className={styles.header}>
+          <div className="skeleton" style={{ width: "55%", height: 18, borderRadius: "var(--radius-sm)" }} />
+          <div className="skeleton" style={{ width: 60, height: 22, borderRadius: "var(--radius-full)" }} />
+        </div>
+        <div className="skeleton" style={{ width: "40%", height: 28, borderRadius: "var(--radius-sm)" }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+          <div className="skeleton" style={{ width: "50%", height: 14, borderRadius: "var(--radius-sm)" }} />
+        </div>
+        <div className={styles.progress}>
+          <div className="skeleton" style={{ width: "60%", height: "100%", borderRadius: "var(--radius-full)" }} />
+        </div>
+        <div className="skeleton" style={{ width: "100%", height: 32, borderRadius: "var(--radius-md)" }} />
+      </article>
+    );
+  }
 
   return (
     <article className={styles.card}>
@@ -19,14 +42,22 @@ export function CircleCard({ circle, members, showJoin = false }: CircleCardProp
         <h3 className={styles.name}>{circle.name}</h3>
         <CircleStatusBadge status={circle.status} />
       </div>
+      {(circle as Circle & { category?: string }).category && (
+        <span className={styles.category}>{(circle as Circle & { category?: string }).category}</span>
+      )}
+
+      {circle.description && (
+        <p className={styles.description}>{circle.description}</p>
+      )}
 
       <div className={styles.amount}>
-        ₦{circle.contributionNgn.toLocaleString("en-NG")}
+        {currencySymbol}
+        {circle.contributionFiat.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
         <span className={styles.freq}>/ {circle.cycleFrequency}</span>
       </div>
 
       <div className={styles.meta}>
-        <span>{members.length} / {circle.maxMembers} members</span>
+        <span>{currentMemberCount} / {circle.maxMembers} members</span>
         {circle.nextPayoutAt && (
           <span>Next payout: {format(new Date(circle.nextPayoutAt), "MMM d, yyyy")}</span>
         )}
@@ -35,18 +66,25 @@ export function CircleCard({ circle, members, showJoin = false }: CircleCardProp
       <div className={styles.progress}>
         <div
           className={styles.progressBar}
-          style={{ width: `${(members.length / circle.maxMembers) * 100}%` }}
+          style={{ width: `${(currentMemberCount / circle.maxMembers) * 100}%` }}
           role="progressbar"
-          aria-valuenow={members.length}
+          aria-label={`${currentMemberCount} of ${circle.maxMembers} members joined`}
+          aria-valuenow={currentMemberCount}
           aria-valuemin={0}
           aria-valuemax={circle.maxMembers}
         />
       </div>
 
-      {showJoin && circle.status === "open" && spotsLeft > 0 && (
-        <Link href={`/circles/${circle.id}/join`} className="btn btn--accent btn--sm btn--full">
-          Join Circle — {spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} left
-        </Link>
+      {showJoin && circle.status === "open" && (
+        spotsLeft > 0 ? (
+          <Link href={`/circles/${circle.id}/join`} className="btn btn--accent btn--sm btn--full">
+            Join Circle — {spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} left
+          </Link>
+        ) : (
+          <Link href={`/circles/${circle.id}`} className="btn btn--secondary btn--sm btn--full">
+            Circle Full — View Details / Join Waitlist
+          </Link>
+        )
       )}
 
       {!showJoin && (

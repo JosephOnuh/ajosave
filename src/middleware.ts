@@ -1,0 +1,119 @@
+import { NextRequest, NextResponse } from "next/server";
+import { randomBytes } from "crypto";
+
+export function middleware(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  const nonce = randomBytes(16).toString("base64");
+  const csp = buildCsp(nonce);
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+
+  const configuredOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",")
+    : [];
+
+  const allowedOrigins = [
+    ...configuredOrigins,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXTAUTH_URL,
+    "http://localhost:3000",
+    "https://ajosave.app",
+    "https://www.ajosave.app",
+  ]
+    .filter(Boolean)
+    .map((o) => o!.trim().replace(/\/$/, ""));
+
+  // API versioning: transparently rewrite /api/:path* → /api/v1/:path*
+  // Excludes auth routes (handled by NextAuth).
+  if (
+    request.nextUrl.pathname.startsWith("/api/") &&
+    !request.nextUrl.pathname.startsWith("/api/v1/") &&
+    !request.nextUrl.pathname.startsWith("/api/auth/")
+  ) {
+    const newUrl = request.nextUrl.clone();
+    newUrl.pathname = newUrl.pathname.replace("/api/", "/api/v1/");
+    const response = NextResponse.rewrite(newUrl);
+    response.headers.set("X-API-Deprecated", "true");
+    response.headers.set(
+      "X-API-Deprecation-Info",
+      `This path is deprecated. Use ${newUrl.pathname} instead.`
+    );
+    return response;
+  }
+
+  // Handle CORS for API routes
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    // If it's a CORS request (origin header is present)
+    if (origin) {
+      const isAllowed = allowedOrigins.includes(origin);
+      if (!isAllowed) {
+        return NextResponse.json(
+          { error: "Origin not allowed by CORS policy" },
+          { status: 403 }
+        );
+      }
+
+      // Handle preflight requests
+      if (request.method === "OPTIONS") {
+        const response = new NextResponse(null, { status: 204 });
+        response.headers.set("Access-Control-Allow-Origin", origin);
+        response.headers.set(
+          "Access-Control-Allow-Methods",
+          "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+        );
+        response.headers.set(
+          "Access-Control-Allow-Headers",
+          "Content-Type, Authorization, X-Requested-With, X-CSRF-Token"
+        );
+        response.headers.set("Access-Control-Allow-Credentials", "true");
+        response.headers.set("Access-Control-Max-Age", "86400");
+        // Add security headers to preflight response
+        response.headers.set("X-Content-Type-Options", "nosniff");
+        response.headers.set("X-Frame-Options", "DENY");
+        response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+        response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+        response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+        return response;
+      }
+
+      // Handle regular requests (GET, POST, etc.)
+      const response = NextResponse.next();
+      response.headers.set("Access-Control-Allow-Origin", origin);
+      response.headers.set(
+        "Access-Control-Allow-Methods",
+        "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+      );
+      response.headers.set(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, X-Requested-With, X-CSRF-Token"
+      );
+      response.headers.set("Access-Control-Allow-Credentials", "true");
+      // Add security headers to API responses
+      response.headers.set("X-Content-Type-Options", "nosniff");
+      response.headers.set("X-Frame-Options", "DENY");
+      response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+      response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+      response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+      return response;
+    }
+  }
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy-Report-Only", csp);
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+
+  return response;
+}
+
+export const config = {
+  matcher: [
+    "/api/:path*",
+    // Apply CSP to all page routes (exclude static files and _next internals)
+    "/((?!_next/static|_next/image|favicon.ico).*)",
+  ],
+};
