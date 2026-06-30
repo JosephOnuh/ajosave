@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>Missed contribution alert</title>
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+</head>
+<body style="margin:0;padding:0;background-color:#F8F9FA;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F8F9FA">
+<tr><td align="center" style="padding:40px 16px;">
+  <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
+
+    <tr>
+      <td bgcolor="#1A2B4A" align="center" style="background-color:#1A2B4A;padding:28px 40px;border-radius:8px 8px 0 0;">
+        <h1 style="margin:0;color:#F5A623;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:700;">{{appName}}</h1>
+        <p style="margin:5px 0 0;color:#94A3B8;font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Trustless Savings Circles</p>
+      </td>
+    </tr>
+
+    <tr>
+      <td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:40px 40px 36px;">
+        <h2 style="margin:0 0 12px;color:#B91C1C;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;">Missed contribution</h2>
+        <p style="margin:0 0 24px;color:#4B5563;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;">
+          Hi {{displayName}}, a contribution was not received for <strong>Cycle {{cycleNumber}}</strong> of <strong>{{circleName}}</strong>.
+        </p>
+
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+          <tr>
+            <td bgcolor="#FEF2F2" style="background-color:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;border-radius:0 6px 6px 0;padding:16px 20px;">
+              <p style="margin:0 0 4px;color:#991B1B;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;">&#9888; Action required</p>
+              <p style="margin:0;color:#B91C1C;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;">
+                Missed contribution of &#8358;{{amountNgn}} for Cycle #{{cycleNumber}}.<br>
+                Continued missed payments may result in removal from the circle and a reduction in your reputation score.
+              </p>
+            </td>
+          </tr>
+        </table>
+
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td align="center">
+              <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="{{circleUrl}}" style="height:48px;v-text-anchor:middle;width:200px;" arcsize="10%" strokecolor="#DC2626" fillcolor="#DC2626"><w:anchorlock/><center><![endif]-->
+              <a href="{{circleUrl}}" style="background-color:#DC2626;border:2px solid #DC2626;border-radius:6px;color:#FFFFFF;display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;line-height:48px;padding:0 36px;text-decoration:none;">View Circle</a>
+              <!--[if mso]></center></v:roundrect><![endif]-->
+            </td>
+          </tr>
+        </table>
+
+        <p style="margin:24px 0 0;color:#9CA3AF;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.6;text-align:center;">
+          If you believe this is an error, please contact support immediately.
+        </p>
+      </td>
+    </tr>
+
+    <tr>
+      <td bgcolor="#F8F9FA" align="center" style="background-color:#F8F9FA;padding:20px 40px;border-top:1px solid #E5E7EB;border-radius:0 0 8px 8px;">
+        <p style="margin:0;color:#9CA3AF;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;">
+          &copy; {{year}} {{appName}}. All rights reserved.<br>
+          <a href="{{appUrl}}" style="color:#9CA3AF;text-decoration:none;">{{appUrl}}</a>
+        </p>
+      </td>
+    </tr>
+
+  </table>
+</td></tr>
+</table>
+</body>
+</html>

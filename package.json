@@ -89,6 +89,7 @@
     "@testing-library/react": "^16.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.14.9",
+    "@types/nodemailer": "^6.4.17",
     "@types/pg": "^8.11.6",
     "@types/pino": "^7.0.5",
     "@types/qrcode.react": "^1.0.5",
